@@ -35,6 +35,23 @@ def profile_dir():
     return os.path.join(local_app_dir(), "browser_profile")
 
 
+def desktop_dir():
+    """真正的桌面目录。找不到返回 None（有些环境没有桌面）。
+
+    不能想当然用 `%USERPROFILE%\\Desktop`：这台机器的桌面被重定向到了
+    D:\\桌面，展开 user profile 会指向一个并不存在的目录。
+    """
+    cands = [
+        os.path.join(os.path.expanduser("~"), "Desktop"),
+        r"D:\桌面",
+        r"C:\桌面",
+    ]
+    for c in cands:
+        if os.path.isdir(c):
+            return c
+    return None
+
+
 def project_root():
     """源码运行时的项目根（包目录的上一层）。"""
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

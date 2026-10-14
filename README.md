@@ -4,9 +4,9 @@
 
 ## 用法（两种）
 
-### A. 桌面 exe（推荐，给不碰命令行的人用）
+### A. 桌面（推荐，给不碰命令行的人用）
 
-桌面上双击 **`小鹅通下载器.exe`** → 粘贴课程链接 → 点「开始下载」。
+桌面上双击 **`小鹅通下载器`** → 粘贴课程链接 → 点「开始下载」。
 
 - 启动时会**自动读剪贴板**，如果剪贴板里正好是课程链接就直接填好，你只要点一下按钮
 - 一次可粘多条链接（一行一个），批量下载
@@ -16,31 +16,41 @@
 - 保存目录会记住上次用的，存在 `%APPDATA%\xiaoe-dl\config.json`
 - 需要 `ffmpeg`（已在系统 PATH 上）；找不到会去常见安装位置兜底找
 
-exe 用 `--windowed` 打包，没有黑窗口。带参数启动（`小鹅通下载器.exe --url ...`）会走命令行模式
-并把输出写进 `%TEMP%\xiaoe-cli.log`。
+#### 为什么桌面放的是快捷方式，不是 exe
 
-重新打包：
+这台机器开着**智能应用控制（Smart App Control，强制模式）**。它按微软 ISG 信誉
+放行可执行文件：老 exe 攒够信誉所以曾经能跑，但**每重新打包一次就是一份新哈希、
+要重新攒一次信誉**。实测 Phase 4 重建出来的 exe 直接被拒（退出码 126，
+CodeIntegrity 事件 3077：未满足企业签名级别要求）。
+
+快捷方式指向 `pythonw.exe` 跑 `run.py`：那是 Python 官方的签名二进制，本身就在
+信誉库里，不受这条策略约束，而且**永远是最新代码**，不用再打包。
+
+重建或修复启动器（换机器、项目挪位置之后跑一次）：
 
 ```bash
-python -m PyInstaller --noconfirm --clean --onefile --windowed \
-  --name "小鹅通下载器" --hidden-import xiaoe_crypto --hidden-import download \
-  gui.py
-# 产物在 dist\小鹅通下载器.exe
+python tools/make_launcher.py
 ```
+
+桌面上另有 **`小鹅通下载器（旧版备用）.exe`** —— 重构前打的包，跑得起来，万一
+Python 环境坏了可以拿它应急。它和启动器只差一条：**不支持自动登录**（exe 为了
+控制体积没打包 playwright）。
+
+> 若你确实想要一个能双击的独立 exe：得先关掉智能应用控制。那是**不可逆**的
+> （必须重装 Windows 才能再打开），会降低整机防护。为一个下载工具付这个代价不值。
+> 真要走这条路，`python tools/build_exe.py` 一条命令就能打包并部署到桌面。
 
 ### B. 命令行
 
-
-
 ```bash
 # 单个课程（自动命名，存到 D:\视频）
-python download.py --url "<课程链接>"
+python run.py --url "<课程链接>"
 
 # 指定输出目录
-python download.py --url "<课程链接>" --dir "D:\视频\交易训练营"
+python run.py --url "<课程链接>" --dir "D:\视频\交易训练营"
 
 # 批量：urls.txt 一行一个链接
-python download.py --list urls.txt --dir "D:\视频\交易训练营"
+python run.py --list urls.txt --dir "D:\视频\交易训练营"
 ```
 
 常用参数：
@@ -124,18 +134,26 @@ python download.py --list urls.txt --dir "D:\视频\交易训练营"
   「再起一个带调试端口的 Chrome」根本起不来
 - 对课程页 URL 直接跑 yt-dlp：Unsupported URL
 - F12 抓包：页面有反调试，直接 `Paused in debugger`
-- 硬解 `confusion_index` 混淆播放列表：算法逆向出来了（见 `xiaoe_crypto.py`，确实能用），
+- 硬解 `confusion_index` 混淆播放列表：算法逆向出来了（见 `xiaoe_dl/crypto.py`，确实能用），
   **但没必要** —— `playlist_eof.m3u8` 是明文的
 - 硬解 `url` 字段的 base64 字符替换：同样没必要，走 `ext.param` 就行
 
-`_explore/` 目录里是这些探索期的脚本，留作参考，**不是入口**。真正的入口只有 `download.py`。
+`_explore/` 目录里是这些探索期的脚本，留作参考，**不是入口**。真正的入口只有 `run.py`。
 
 ## 文件说明
 
 | 文件 | 作用 |
 |------|------|
-| `download.py` | 核心管线（命令行入口） |
-| `gui.py` | 图形界面，打包成 exe 用 |
-| `xiaoe_crypto.py` | `[xiaoe]` 混淆播放列表解码器（备用，主流程用不到） |
+| `run.py` | **唯一入口**。无参数起 GUI，带参数走命令行；也是 PyInstaller 的打包入口 |
+| `xiaoe_dl/core.py` | 核心管线（取流、拼分片、并发下载、ffmpeg 合并） |
+| `xiaoe_dl/gui.py` | 图形界面 |
+| `xiaoe_dl/cli.py` | 命令行参数解析 |
+| `xiaoe_dl/cookies.py` | cookie 文件读取、按域过滤、登录态有效期 |
+| `xiaoe_dl/paths.py` | 路径与外部依赖（ffmpeg）定位 |
+| `xiaoe_dl/crypto.py` | `[xiaoe]` 混淆播放列表解码器（备用，主流程用不到） |
+| `tools/diagnose.py` | **分阶段链路诊断** —— 网站改版时先跑这个找断点 |
+| `tools/make_launcher.py` | 在桌面建/修启动器 |
+| `tools/build_exe.py` | 一条命令打包并部署 exe（智能应用控制下会被拦，见上文） |
+| `tests/` | 单测，`python -m pytest` |
 | `_explore/` | 探索期脚本，归档 |
-| `dist/小鹅通下载器.exe` | 打包产物（桌面那份的源） |
+| `dist/小鹅通下载器.exe` | 打包产物（未部署，本机受策略拦截） |

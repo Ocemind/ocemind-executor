@@ -61,6 +61,26 @@ def test_cookie_candidates_second_entry_is_next_to_executable_or_root():
     assert os.path.dirname(cands[1]) == paths.resource_dir()
 
 
+def test_desktop_dir_only_returns_a_real_directory():
+    """找不到就返回 None，绝不返回一个不存在的路径。
+
+    部署脚本会直接往这个目录写快捷方式，返回假路径会导致「静默部署失败」。
+    """
+    d = paths.desktop_dir()
+    assert d is None or os.path.isdir(d)
+
+
+def test_desktop_dir_falls_back_when_user_profile_is_wrong(monkeypatch):
+    """这台机器的桌面被重定向到了 D:\\桌面，展开 user profile 会指到不存在的目录。
+
+    这里**不写死 D:\\桌面**（换台机器跑测试不该红），只断言那条不变量：
+    候选里第一个不存在时，要能落到真正存在的那个。
+    """
+    monkeypatch.setenv("USERPROFILE", r"Z:\definitely-not-here")
+    d = paths.desktop_dir()
+    assert d is None or os.path.isdir(d)
+
+
 def test_app_dir_follows_appdata(monkeypatch):
     monkeypatch.setenv("APPDATA", r"C:\Users\X\AppData\Roaming")
     assert paths.app_dir() == os.path.join(r"C:\Users\X\AppData\Roaming", "xiaoe-dl")

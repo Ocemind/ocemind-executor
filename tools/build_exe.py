@@ -14,21 +14,14 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 开发工具在包外，直接 `python tools/build_exe.py` 时 ROOT 不在 sys.path 上
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
+from xiaoe_dl.paths import desktop_dir  # noqa: E402
+
 SPEC = os.path.join(ROOT, "小鹅通下载器.spec")
 EXE_NAME = "小鹅通下载器.exe"
-
-
-def find_desktop():
-    """找真正的桌面目录。被重定向过的话 user shell 文件夹会指向别处。"""
-    candidates = [
-        os.path.join(os.path.expanduser("~"), "Desktop"),
-        r"D:\桌面",
-        r"C:\桌面",
-    ]
-    for c in candidates:
-        if os.path.isdir(c):
-            return c
-    return None
 
 
 def human(n):
@@ -73,7 +66,7 @@ def main():
     if args.no_deploy:
         return None
 
-    desktop = find_desktop()
+    desktop = desktop_dir()
     if not desktop:
         print("[!] 没找到桌面目录，跳过部署。产物在 dist/ 下")
         return None
