@@ -29,9 +29,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-import download  # noqa: E402
-import xiaoe_cookies as cookies_mod  # noqa: E402
-import xiaoe_crypto  # noqa: E402
+from xiaoe_dl import core as download  # noqa: E402
+from xiaoe_dl import cookies as cookies_mod  # noqa: E402
 
 PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
 

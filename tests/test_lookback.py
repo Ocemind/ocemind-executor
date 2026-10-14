@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from download import CODE_HINT, parse_lookback, pick_line
+from xiaoe_dl.core import CODE_HINT, parse_lookback, pick_line
 
 
 # ------------------------------------------------------------ parse_lookback

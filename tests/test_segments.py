@@ -3,7 +3,7 @@
 
 这是最容易悄悄坏掉的一环：拼错了不会报错，只会 404 或者下到错误的字节。
 """
-from download import abs_url, parse_segments
+from xiaoe_dl.core import abs_url, parse_segments
 
 EXT = {
     "host": "https://ttv-tos.xet.tech",

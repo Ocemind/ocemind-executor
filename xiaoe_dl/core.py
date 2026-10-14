@@ -1,18 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-小鹅通回放下载器（免登录重放 / 只用 cookie 文件）
+核心管线：链接 -> 接口 -> m3u8 -> 分片 -> MP4。
 
-流程：
-  1. 读 cookie -> 调 _alive/v3/get_lookback_list 拿明文 playlist_eof.m3u8 地址
-  2. 下载 m3u8（明文），解析分片
-  3. 用 ext.host/path/param 拼分片绝对地址，多线程下回来
-  4. ffmpeg concat 成 mp4
+  get_lookback_list  -> 明文 playlist_eof.m3u8 地址 + 分片 CDN 基址与签名
+  grab_playlist      -> 下 m3u8，解析分片
+  abs_url            -> 拼带签名的分片绝对地址
+  download_all       -> 多线程下分片
+  merge              -> ffmpeg concat 成 mp4
 
-用法：
-  python download.py --url "<课程链接>" [--out "D:\\视频\\xxx.mp4"]
-  python download.py --alive-id l_xxx --app-id appxxx --out out.mp4
+命令行入口在 cli.py，图形界面在 gui.py。
 """
-import argparse
 import concurrent.futures as cf
 import json
 import os
@@ -25,9 +22,9 @@ import urllib.parse as up
 
 import requests
 
-import xiaoe_crypto
-from xiaoe_cookies import (app_dir, cookie_candidates, load_cookies,
-                           resolve_cookies)
+from xiaoe_dl import crypto
+from xiaoe_dl.cookies import cookie_header, load_cookies, resolve_cookies
+from xiaoe_dl.paths import app_dir, cookie_candidates, find_ffmpeg
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -45,32 +42,8 @@ CODE_HINT = {
     11304: "课程不存在或已下架",
 }
 
-_FFMPEG_CACHE = []
-
-
-def find_ffmpeg():
-    """优先 PATH，其次常见安装位置。找不到就退回 'ffmpeg' 让 ffmpeg 自己报错。"""
-    if _FFMPEG_CACHE:
-        return _FFMPEG_CACHE[0]
-    import glob
-    import shutil
-    cand = shutil.which("ffmpeg")
-    if not cand:
-        pats = [r"D:\Program Files\ffmpeg*\bin\ffmpeg.exe",
-                r"C:\Program Files\ffmpeg*\bin\ffmpeg.exe",
-                r"D:\ffmpeg*\bin\ffmpeg.exe",
-                r"C:\ffmpeg*\bin\ffmpeg.exe"]
-        for p in pats:
-            hits = sorted(glob.glob(p))
-            if hits:
-                cand = hits[-1]
-                break
-    _FFMPEG_CACHE.append(cand or "ffmpeg")
-    return _FFMPEG_CACHE[0]
-
 
 # ---------------------------------------------------------------- 工具
-# cookie 的位置解析与读取已移到 xiaoe_cookies，这里只 re-export 供旧调用点使用。
 _TLS = threading.local()
 
 
@@ -216,7 +189,7 @@ def grab_playlist(s, ext, cookie, h5, out_m3u8, app_id=None):
             m = re.match(r"https?://([a-zA-Z0-9]+)\.h5\.xiaoeknow\.com", h5 or "")
             app_id = m.group(1) if m else None
         try:
-            txt = xiaoe_crypto.decode(xiaoe_crypto.strip_prefix(txt), app_id)
+            txt = crypto.decode(crypto.strip_prefix(txt), app_id)
             print("    [crypto] 已解混淆播放列表")
             # 机会主义留样本：下次真遇到 [xiaoe] 就落一份原始文本，
             # 给 tests/data/raw_xiaoe.bin 当真实测试向量用。
@@ -326,11 +299,18 @@ def merge(tmpdir, n, out_path):
 
 
 # ---------------------------------------------------------------- 主流程
-def run_one(url, app_id, alive_id, cookie, args, index=None, total=None):
+def run_one(url, app_id, alive_id, cookies, args, index=None, total=None):
+    """下一个课程。
+
+    `cookies` 是 list[Cookie]（不是拼好的头）：每个课程要按它自己的 app_id
+    挑出对应那份登录态。批量下载多个小鹅通账号的课时，这一步不能省。
+    """
     tag = f"[{index}/{total}] " if index else ""
     if not (app_id and alive_id):
         print(f"{tag}[!] 链接里没解析出 app_id/alive_id，跳过：{url}")
         return False
+
+    cookie = cookie_header(cookies, app_id)
 
     print(f"\n{tag}app_id={app_id}  alive_id={alive_id}")
     try:
@@ -392,58 +372,3 @@ def run_one(url, app_id, alive_id, cookie, args, index=None, total=None):
         import shutil
         shutil.rmtree(tmpdir, ignore_errors=True)
     return True
-
-
-def main():
-    ap = argparse.ArgumentParser(
-        description="小鹅通回放下载器 —— 只要给课程链接，自动出 MP4")
-    ap.add_argument("--url", action="append", default=[],
-                    help="课程/回放链接，可重复传多次")
-    ap.add_argument("--list", help="txt 文件，一行一个课程链接")
-    ap.add_argument("--app-id")
-    ap.add_argument("--alive-id")
-    ap.add_argument("--cookies", default=None, help="默认自动找 D:\\视频\\cookies.txt")
-    ap.add_argument("--out", help="输出 mp4 路径（单个课程时用）")
-    ap.add_argument("--dir", default=r"D:\视频", help="批量默认输出目录")
-    ap.add_argument("--line", default=None, help="线路序号(1/2/3)或 cloud(tx/hw/byte)")
-    ap.add_argument("--workers", type=int, default=24)
-    ap.add_argument("--keep-ts", action="store_true")
-    ap.add_argument("--force", action="store_true", help="覆盖已存在文件")
-    ap.add_argument("--test", type=int, default=0, help="只下前 N 个分片做验证")
-    args = ap.parse_args()
-
-    urls = list(args.url)
-    if args.list:
-        with open(args.list, encoding="utf-8", errors="ignore") as f:
-            urls += [l.strip() for l in f
-                     if l.strip() and not l.startswith("#")]
-    if not urls and not (args.app_id and args.alive_id):
-        ap.error("请用 --url / --list 提供课程链接")
-
-    args.cookies = resolve_cookies(args.cookies)
-    cookie, _ = load_cookies(args.cookies)
-    print(f"[*] cookie 文件：{args.cookies}（{len(cookie.split('; '))} 条）")
-
-    if not urls:
-        ok = run_one(None, args.app_id, args.alive_id, cookie, args)
-        sys.exit(0 if ok else 1)
-
-    total = len(urls)
-    if total > 1 and args.out:
-        sys.exit("[!] 批量模式不要用 --out，用 --dir 指定目录")
-    print(f"[*] 共 {total} 个课程")
-
-    ok_n = 0
-    for i, u in enumerate(urls, 1):
-        if args.app_id and args.alive_id:
-            a, b = args.app_id, args.alive_id
-        else:
-            a, b = parse_course_url(u)
-        if run_one(u, a, b, cookie, args, i, total):
-            ok_n += 1
-    print(f"\n[*] 全部结束：成功 {ok_n}/{total}")
-    sys.exit(0 if ok_n == total else 1)
-
-
-if __name__ == "__main__":
-    main()

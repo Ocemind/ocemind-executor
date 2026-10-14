@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-cookie 文件的位置解析、读取、按域过滤和状态汇报。
-
-单独成模块的原因：这些是纯函数/纯 IO，测试它们不该被迫 import tkinter GUI，
-也不该被迫 import 整个下载管线（那会连带拖进 requests）。
+"""cookie 文件的位置解析、读取、按域过滤和状态汇报。
 
 关键事实（实测得出，别改）：
   **只有 `ko_token` 这一条 cookie 是必需的。** 其余都是埋点/统计类，
@@ -14,11 +10,13 @@ import sys
 import time as _time
 from typing import NamedTuple
 
+from xiaoe_dl.paths import app_dir, cookie_candidates
+
 
 class Cookie(NamedTuple):
     """一条 Netscape 格式的 cookie。
 
-    保留 domain 是为了能按域过滤——将来自动登录会带来多个
+    保留 domain 是为了能按域过滤——自动登录会带来多个
     `{app_id}.h5.xiaoeknow.com` 子域的 cookie，混在一条 Cookie 头里服务端行为未定义。
     """
     domain: str
@@ -27,25 +25,6 @@ class Cookie(NamedTuple):
     expires: int          # unix 秒；0 或负表示会话级 cookie
     name: str
     value: str
-
-
-def app_dir():
-    """配置/cookie 的规范存放位置。"""
-    base = os.environ.get("APPDATA") or os.path.expanduser("~")
-    return os.path.join(base, "xiaoe-dl")
-
-
-def cookie_candidates():
-    """按优先级列出 cookie 文件位置。"""
-    here = os.path.dirname(os.path.abspath(
-        sys.executable if getattr(sys, "frozen", False) else __file__))
-    return [
-        os.path.join(app_dir(), "cookies.txt"),   # 规范位置
-        os.path.join(here, "cookies.txt"),        # 便携：放脚本/exe 旁边
-        os.path.join(app_dir(), "cookies_session.txt"),
-        r"D:\视频\cookies.txt",                    # 老位置，兼容
-        r"D:\视频\cookies_session.txt",
-    ]
 
 
 def resolve_cookies(path=None):
@@ -68,16 +47,14 @@ def parse_netscape(text):
     格式是 7 个 TAB 分隔的字段：
         domain  flag  path  secure  expires  name  value
 
-    跳过空行和 `#` 注释。字段数不足 7 的行直接丢弃（浏览器导出的文件里
-    偶尔会有 `#HttpOnly_` 前缀行，那种行首是 `#` 但实际是有效数据——
-    这里要特殊处理）。
+    跳过空行和 `#` 注释。字段数不足 7 的行直接丢弃。
+    `#HttpOnly_` 前缀行首虽然是 `#`，但那是有效数据，要特殊处理。
     """
     out = []
     for line in text.splitlines():
         line = line.strip()
         if not line:
             continue
-        # `#HttpOnly_` 是有效数据行，不是注释
         if line.startswith("#"):
             if line.startswith("#HttpOnly_"):
                 line = line[len("#HttpOnly_"):]
@@ -102,13 +79,11 @@ def parse_netscape(text):
 
 
 def load_cookies(path):
-    """读 cookie 文件。
+    """读 cookie 文件，返回 `(cookie头字符串, list[Cookie])`。
 
-    返回 `(cookie头字符串, list[Cookie])`。
-
-    注意 cookie 头是把**所有域**的 cookie 拼在一起——这在只有一个 app 子域时没问题，
-    但自动登录的 profile 一旦碰过多个 `{app_id}.h5.xiaoeknow.com`，
-    就会出现多条同名 `ko_token`。那种场景要用 `cookie_header_for_app()` 按域过滤。
+    返回的头是把**所有域**的 cookie 拼在一起的。只有一个 app 子域时够用；
+    跨多个 app 的场景请用 `cookie_header_for_app()` 按域过滤，否则会出现
+    多条同名 ko_token 撞在一起。
     """
     with open(path, encoding="utf-8", errors="ignore") as f:
         cookies = parse_netscape(f.read())
@@ -150,6 +125,19 @@ def cookie_header_for_app(cookies, app_id):
         seen.add(c.name)
         picked.append(c)
     return "; ".join(f"{c.name}={c.value}" for c in picked)
+
+
+def cookie_header(cookies, app_id=None):
+    """按域过滤后的 Cookie 头，过滤后为空则退回全量。
+
+    退回全量是刻意的：宁可多发几条无关 cookie（服务端会忽略），
+    也不要因为域对不上就一条都不发、把本来能用的场景弄坏。
+    真正要防的是「同名 ko_token 撞车」，那个由 cookie_header_for_app 解决。
+    """
+    h = cookie_header_for_app(cookies, app_id)
+    if h:
+        return h
+    return "; ".join(f"{c.name}={c.value}" for c in cookies)
 
 
 def find_ko_token(cookies, app_id=None, now=None):

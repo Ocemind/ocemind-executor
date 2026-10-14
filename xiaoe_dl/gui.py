@@ -19,8 +19,10 @@ from types import SimpleNamespace
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-import download
-from xiaoe_cookies import cookie_status
+from xiaoe_dl import core
+from xiaoe_dl.cookies import (cookie_status, load_cookies,
+                              resolve_cookies)
+from xiaoe_dl.paths import app_dir, find_ffmpeg
 
 APP_TITLE = "小鹅通视频下载器"
 CONFIG_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")),
@@ -138,7 +140,7 @@ class App:
 
     def _refresh_cookie_label(self):
         try:
-            path = download.resolve_cookies(None)
+            path = resolve_cookies(None)
         except SystemExit:
             path = None
         n, exp = cookie_status(path)
@@ -154,7 +156,7 @@ class App:
             filetypes=[("cookies 文件", "*.txt *.json"), ("所有文件", "*.*")])
         if not f:
             return
-        dest = os.path.join(download.app_dir(), "cookies.txt")
+        dest = os.path.join(app_dir(), "cookies.txt")
         try:
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             if f.lower().endswith(".json"):
@@ -253,27 +255,27 @@ class App:
         self.btn_stop.configure(state="disabled")
 
     def _run(self, urls, out_dir):
-        """工作线程：把 download 的 print 接到队列里。"""
+        """工作线程：把 core 的 print 接到队列里。"""
         try:
             try:
-                cookie_path = download.resolve_cookies(None)
+                cookie_path = resolve_cookies(None)
             except SystemExit as e:
                 self.q.put(("fatal", str(e)))
                 return
-            cookie, _ = download.load_cookies(cookie_path)
+            _, cookies = load_cookies(cookie_path)
             args = SimpleNamespace(
                 out=None, dir=out_dir, line=None, workers=24,
                 keep_ts=False, force=False, test=0, cookies=cookie_path,
             )
             with contextlib.redirect_stdout(self._Writer()):
                 print(f"cookie 文件：{cookie_path}")
-                ff = download.find_ffmpeg()
+                ff = find_ffmpeg()
                 print(f"ffmpeg：{ff}")
                 ok = 0
                 for i, u in enumerate(urls, 1):
-                    a, b = download.parse_course_url(u)
+                    a, b = core.parse_course_url(u)
                     try:
-                        if download.run_one(u, a, b, cookie, args, i, len(urls)):
+                        if core.run_one(u, a, b, cookies, args, i, len(urls)):
                             ok += 1
                     except Exception:
                         print(f"[{i}/{len(urls)}] [!] 异常：")
@@ -365,21 +367,3 @@ def main_gui():
     app = App()
     app_q = app.q
     app.run()
-
-
-if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        # 带参数启动 -> 命令行模式。打包成 --windowed 后没有控制台，
-        # 所以结果同时写一份日志文件，方便排查。
-        log_path = os.path.join(os.environ.get("TEMP", "."), "xiaoe-cli.log")
-        with open(log_path, "w", encoding="utf-8") as lf:
-            with contextlib.redirect_stdout(lf), contextlib.redirect_stderr(lf):
-                try:
-                    download.main()
-                except SystemExit:
-                    pass
-                except Exception:
-                    traceback.print_exc()
-        print(f"日志：{log_path}")
-    else:
-        main_gui()

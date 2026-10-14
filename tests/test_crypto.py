@@ -21,8 +21,8 @@ import string
 
 import pytest
 
-from xiaoe_crypto import (ALPHABET, IDX, JS_DEFAULT_KEY, TAIL_LEN, decode,
-                          md5_hex, strip_prefix)
+from xiaoe_dl.crypto import (ALPHABET, IDX, JS_DEFAULT_KEY, TAIL_LEN,
+                              decode, md5_hex, strip_prefix)
 
 KEY = "apptvagt9li8549"
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")

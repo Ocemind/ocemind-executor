@@ -2,7 +2,7 @@
 """parse_course_url —— 从五花八门的课程链接里抠 app_id / alive_id。"""
 import pytest
 
-from download import parse_course_url
+from xiaoe_dl.core import parse_course_url
 
 APP_ID = "apptvagt9li8549"
 ALIVE_ID = "l_6ab33ce1e4b0694c354c1a5b"
