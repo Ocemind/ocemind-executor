@@ -19,10 +19,10 @@ from types import SimpleNamespace
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from xiaoe_dl import core
-from xiaoe_dl.cookies import (cookie_status, load_cookies,
-                              resolve_cookies)
-from xiaoe_dl.paths import app_dir, find_ffmpeg
+from xiaoe_dl import auth, core
+from xiaoe_dl.auth import AuthError
+from xiaoe_dl.cookies import cookie_status, resolve_cookies
+from xiaoe_dl.paths import app_dir, find_ffmpeg, profile_dir
 
 APP_TITLE = "小鹅通视频下载器"
 CONFIG_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")),
@@ -109,6 +109,10 @@ class App:
             side="left", padx=8)
         ttk.Button(crow, text="导入 cookies…",
                    command=self._import_cookies).pack(side="right")
+        # exe 里没有 playwright，这个按钮会走降级分支给出说明，而不是消失
+        self.btn_login = ttk.Button(crow, text="登录一次",
+                                    command=self._login_once)
+        self.btn_login.pack(side="right", padx=6)
 
         bar = ttk.Frame(wrap)
         bar.pack(fill="x", **pad)
@@ -139,16 +143,30 @@ class App:
         self.log.pack(side="left", fill="both", expand=True)
 
     def _refresh_cookie_label(self):
+        """报告当前走的是哪条路 —— 用户要知道的是这个，不是孤零零一个条数。"""
         try:
             path = resolve_cookies(None)
         except SystemExit:
             path = None
         n, exp = cookie_status(path)
+
+        bits = []
         if n is None:
-            self.var_ck.set("⚠ 没有 cookies.txt —— 点右边按钮导入一份")
+            bits.append("⚠ 没有 cookies.txt")
         else:
-            s = f"已加载 {n} 条" + (f"，{exp}" if exp else "")
-            self.var_ck.set(s)
+            bits.append(f"已加载 {n} 条" + (f"，{exp}" if exp else ""))
+        if auth.playwright_available():
+            # profile 在不在，决定自动登录是「立刻可用」还是「得先登一次」，
+            # 这是用户看一眼就该知道的事
+            bits.append("可以自动登录（已登录过）" if os.path.isdir(profile_dir())
+                        else "可以自动登录（还没登录过）")
+            self.btn_login.configure(state="normal")
+        else:
+            # exe 场景。按钮留着但变灰，比直接消失更好懂 —— 用户能看出是
+            # 「这个版本没有」而不是「这个功能不存在」。
+            bits.append("本版本不含自动登录（exe 为体积排除了 playwright）")
+            self.btn_login.configure(state="disabled")
+        self.var_ck.set("　·　".join(bits))
 
     def _import_cookies(self):
         f = filedialog.askopenfilename(
@@ -182,6 +200,70 @@ class App:
             return
         self._refresh_cookie_label()
         messagebox.showinfo(APP_TITLE, "cookies 已导入，可以开始下载了。")
+
+    # ------------------------------------------------------------ 登录
+    def _target_from_input(self):
+        """从链接框里抠出 `(app_id, alive_id)`，取不到就是 `(None, None)`。
+
+        有 alive_id 就能真调接口验证，这一点很重要：登录**之前**站点也会下发
+        一个匿名 ko_token，光看它出现会误判成「已登录」。
+        """
+        txt = self.txt_url.get("1.0", "end").strip()
+        if not txt:
+            return None, None
+        cands = URL_RE.findall(txt) or [txt.splitlines()[0]]
+        for u in cands:
+            a, b = core.parse_course_url(u)
+            if a:
+                return a, b
+        return None, None
+
+    def _login_once(self):
+        """弹浏览器让用户登一次。
+
+        **不假定登录方式**：扫码、手机验证码、密码都行。窗口停在登录页，
+        用户用自己习惯的方式登进去，程序只负责把会话收下来。
+        """
+        if not auth.playwright_available():
+            messagebox.showinfo(
+                APP_TITLE,
+                "这个版本不含自动登录。\n\n"
+                "exe 为了控制体积把 playwright 排除掉了。两个办法：\n"
+                "  1. 用「导入 cookies…」导入一份导出的 cookies.txt\n"
+                "  2. 用源码方式跑（桌面的「小鹅通下载器」启动器），那边支持")
+            return
+
+        app_id, alive_id = self._target_from_input()
+        if not app_id:
+            messagebox.showwarning(
+                APP_TITLE, "先把课程链接粘进上面的输入框——\n"
+                           "我需要从链接里取出 app_id 才知道是哪个店铺。")
+            return
+
+        self.btn_login.configure(state="disabled")
+        self._set_status("正在打开浏览器，请在里面完成登录 …")
+        threading.Thread(target=self._login_worker, args=(app_id, alive_id),
+                         daemon=True).start()
+
+    def _login_worker(self, app_id, alive_id):
+        try:
+            verifier = auth.api_verifier(app_id, alive_id) if alive_id else None
+            cks = auth.login_interactive(
+                app_id, verifier=verifier,
+                on_status=lambda m: app_q.put(("log", f"[登录] {m}")))
+            if not cks:
+                app_q.put(("log", "[登录] 没拿到登录态，已放弃。"))
+                app_q.put(("login_done", False))
+                return
+            dest = auth.save_cookies(cks)
+            app_q.put(("log", f"[登录] 登录态已保存到 {dest}"))
+            app_q.put(("login_done", True))
+        except AuthError as e:
+            app_q.put(("log", f"[登录] {e}"))
+            app_q.put(("login_done", False))
+        except Exception:
+            app_q.put(("log", "[登录] 出异常了：\n" + traceback.format_exc()))
+            app_q.put(("login_done", False))
 
     def _prefill(self):
         self._refresh_cookie_label()
@@ -257,12 +339,24 @@ class App:
     def _run(self, urls, out_dir):
         """工作线程：把 core 的 print 接到队列里。"""
         try:
+            # 先定下 app_id：登录态要按 app 挑，开浏览器登录也得知道是哪个店铺
+            app_id = alive_id = None
+            for u in urls:
+                a, b = core.parse_course_url(u)
+                if a:
+                    app_id, alive_id = a, b
+                    break
+
             try:
-                cookie_path = resolve_cookies(None)
-            except SystemExit as e:
+                cookie_path, cookies = auth.get_cookie(
+                    app_id=app_id,
+                    interactive_ok=True,        # GUI 可以弹浏览器让用户登
+                    verifier=(auth.api_verifier(app_id, alive_id)
+                              if alive_id else None),
+                    on_status=lambda m: app_q.put(("log", m)))
+            except AuthError as e:
                 self.q.put(("fatal", str(e)))
                 return
-            _, cookies = load_cookies(cookie_path)
             args = SimpleNamespace(
                 out=None, dir=out_dir, line=None, workers=24,
                 keep_ts=False, force=False, test=0, cookies=cookie_path,
@@ -344,6 +438,19 @@ class App:
                                f"如果日志里出现 11302，说明登录态过期了，"
                                f"需要重新导出一份 cookies.txt。")
                         messagebox.showwarning(APP_TITLE, msg)
+                elif kind == "login_done":
+                    ok = payload
+                    self.btn_login.configure(
+                        state="normal" if auth.playwright_available() else "disabled")
+                    self._refresh_cookie_label()
+                    self._set_status("登录完成" if ok else "登录没成功，详见日志")
+                    if ok:
+                        messagebox.showinfo(APP_TITLE, "登录成功，可以开始下载了。")
+                    else:
+                        messagebox.showwarning(
+                            APP_TITLE,
+                            "没拿到登录态。请看看日志里的说明。\n\n"
+                            "常见原因：窗口关得太早，或者登录其实没完成。")
                 elif kind == "fatal":
                     self.btn_go.configure(state="normal")
                     self.btn_stop.configure(state="disabled")

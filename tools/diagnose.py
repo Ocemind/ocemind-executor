@@ -29,8 +29,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
+from xiaoe_dl import auth  # noqa: E402
 from xiaoe_dl import core as download  # noqa: E402
 from xiaoe_dl import cookies as cookies_mod  # noqa: E402
+from xiaoe_dl import paths  # noqa: E402
 
 PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
 
@@ -129,16 +131,12 @@ def stage_env(ctx):
 
 
 def _playwright_status():
-    try:
-        import importlib.util
-        return importlib.util.find_spec("playwright") is not None
-    except Exception:
-        return False
+    """复用 auth 的实现，别在这里再写一遍 —— 两处判断迟早会不一致。"""
+    return auth.playwright_available()
 
 
 def _profile_dir():
-    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
-    return os.path.join(base, "xiaoe-dl", "browser_profile")
+    return paths.profile_dir()
 
 
 def stage_cookie(ctx):

@@ -7,8 +7,9 @@
 import argparse
 import sys
 
+from xiaoe_dl.auth import (AuthError, api_verifier, get_cookie,
+                           playwright_available)
 from xiaoe_dl.core import parse_course_url, run_one
-from xiaoe_dl.cookies import load_cookies, resolve_cookies
 
 
 def build_parser():
@@ -22,6 +23,11 @@ def build_parser():
     ap.add_argument("--alive-id")
     ap.add_argument("--cookies", default=None,
                     help="cookie 文件路径（默认自动找）")
+    ap.add_argument("--login", action="store_true",
+                    help="登录态失效时打开浏览器让你登一次（默认不弹浏览器）")
+    ap.add_argument("--no-browser", action="store_true",
+                    help="绝不打开浏览器，只用手上的 cookie 文件。"
+                         "脚本/定时任务里用这个，免得卡在等人操作")
     ap.add_argument("--out", help="输出 mp4 路径（单个课程时用）")
     ap.add_argument("--dir", default=r"D:\视频", help="批量默认输出目录")
     ap.add_argument("--line", default=None,
@@ -45,9 +51,36 @@ def main(argv=None):
     if not urls and not (args.app_id and args.alive_id):
         ap.error("请用 --url / --list 提供课程链接")
 
-    args.cookies = resolve_cookies(args.cookies)
-    _, cookies = load_cookies(args.cookies)
+    # 先定下 app_id：登录态要按 app 挑，而且它决定了浏览器该打开哪个店铺的页面。
+    # 批量时会按第一个链接的 app 去准备登录态（同一个店铺的课通常一批下）。
+    app_id_hint, alive_id_hint = args.app_id, args.alive_id
+    if urls:
+        u_app, u_alive = parse_course_url(urls[0])
+        app_id_hint = app_id_hint or u_app
+        alive_id_hint = alive_id_hint or u_alive
+
+    # --no-browser 时走 manual：只用文件，一份都没有就报错，
+    # 而不是静默去开浏览器。脚本/定时任务要的就是这个。
+    mode = "manual" if args.no_browser else "auto"
+
+    def _say(m):
+        print(f"[*] {m}")
+
+    try:
+        args.cookies, cookies = get_cookie(
+            app_id=app_id_hint,
+            mode=mode,
+            manual_path=args.cookies,
+            interactive_ok=args.login,
+            verifier=(api_verifier(app_id_hint, alive_id_hint)
+                      if (args.login and alive_id_hint) else None),
+            on_status=_say)
+    except AuthError as e:
+        sys.exit(f"[!] {e}")
+
     print(f"[*] cookie 文件：{args.cookies}（{len(cookies)} 条）")
+    if args.login and not playwright_available():
+        print("[*] 提示：当前环境没有 playwright，--login 起不了作用")
 
     if not urls:
         ok = run_one(None, args.app_id, args.alive_id, cookies, args)
