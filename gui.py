@@ -20,6 +20,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 import download
+from xiaoe_cookies import cookie_status
 
 APP_TITLE = "小鹅通视频下载器"
 CONFIG_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")),
@@ -46,57 +47,6 @@ def save_config(cfg):
             json.dump(cfg, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
-
-
-def cookie_status(path):
-    """返回 (条数, 到期说明)。只统计元数据，不读值。
-
-    真正决定鉴权的是 ko_token 这一条（实测单独用它就能调通接口），
-    所以优先报它的有效期；报不出来才退回「最早过期」。
-    """
-    if not path or not os.path.exists(path):
-        return None, None
-    import time as _t
-    n = 0
-    key_exp = None
-    earliest = None
-    try:
-        with open(path, encoding="utf-8", errors="ignore") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                p = line.split("\t")
-                if len(p) < 7:
-                    continue
-                n += 1
-                try:
-                    exp = int(p[4])
-                except ValueError:
-                    continue
-                if exp <= 0:
-                    continue
-                if p[5] == "ko_token":
-                    key_exp = exp
-                if earliest is None or exp < earliest:
-                    earliest = exp
-    except Exception:
-        return None, None
-
-    def fmt(e):
-        return _t.strftime("%Y-%m-%d %H:%M", _t.localtime(e))
-
-    now = _t.time()
-    if key_exp:
-        left = key_exp - now
-        if left <= 0:
-            return n, "⚠ 登录凭证已过期，需要重新导入 cookies"
-        days = int(left // 86400)
-        when = "今天" if days == 0 else f"{days} 天后"
-        return n, f"登录凭证有效至 {fmt(key_exp)}（还剩 {when}）"
-    if earliest:
-        return n, f"最早 {fmt(earliest)} 过期"
-    return n, None
 
 
 def clipboard_xiaoe_url(root):

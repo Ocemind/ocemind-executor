@@ -25,6 +25,10 @@ import urllib.parse as up
 
 import requests
 
+import xiaoe_crypto
+from xiaoe_cookies import (app_dir, cookie_candidates, load_cookies,
+                           resolve_cookies)
+
 try:
     sys.stdout.reconfigure(encoding="utf-8")
 except Exception:
@@ -32,24 +36,6 @@ except Exception:
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36")
-def app_dir():
-    """配置/cookie 的规范存放位置。"""
-    base = os.environ.get("APPDATA") or os.path.expanduser("~")
-    return os.path.join(base, "xiaoe-dl")
-
-
-def cookie_candidates():
-    """按优先级列出 cookie 文件位置。"""
-    here = os.path.dirname(os.path.abspath(
-        sys.executable if getattr(sys, "frozen", False) else __file__))
-    return [
-        os.path.join(app_dir(), "cookies.txt"),   # 规范位置
-        os.path.join(here, "cookies.txt"),        # 便携：放脚本/exe 旁边
-        os.path.join(app_dir(), "cookies_session.txt"),
-        r"D:\视频\cookies.txt",                    # 老位置，兼容
-        r"D:\视频\cookies_session.txt",
-    ]
-
 
 
 # 接口错误码 -> 人话
@@ -84,35 +70,7 @@ def find_ffmpeg():
 
 
 # ---------------------------------------------------------------- 工具
-def resolve_cookies(path=None):
-    """没指定就用第一份存在的 cookie 文件。"""
-    if path:
-        return path
-    cands = cookie_candidates()
-    for p in cands:
-        if os.path.exists(p):
-            return p
-    raise SystemExit(
-        "[!] 找不到 cookies.txt，找过这些位置：\n    "
-        + "\n    ".join(cands)
-        + f"\n    请把导出的 cookies.txt 放到：{os.path.join(app_dir(), 'cookies.txt')}")
-
-
-def load_cookies(path):
-    """返回 (cookie头字符串, 原始列表)。"""
-    pairs = []
-    with open(path, encoding="utf-8", errors="ignore") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            p = line.split("\t")
-            if len(p) < 7:
-                continue
-            pairs.append(f"{p[5]}={p[6]}")
-    return "; ".join(pairs), pairs
-
-
+# cookie 的位置解析与读取已移到 xiaoe_cookies，这里只 re-export 供旧调用点使用。
 _TLS = threading.local()
 
 
@@ -168,17 +126,36 @@ def parse_course_url(url):
     return app_id, alive_id
 
 
-def get_lookback(app_id, alive_id, cookie):
-    h5 = f"https://{app_id}.h5.xiaoeknow.com"
-    api = (f"{h5}/_alive/v3/get_lookback_list"
-           f"?app_id={app_id}&alive_id={alive_id}&protection=0")
-    raw = http_get(api, cookie, h5 + "/")
-    d = json.loads(raw.decode("utf-8", "replace"))
+def h5_base(app_id):
+    return f"https://{app_id}.h5.xiaoeknow.com"
+
+
+def lookback_api(app_id, alive_id):
+    return (f"{h5_base(app_id)}/_alive/v3/get_lookback_list"
+            f"?app_id={app_id}&alive_id={alive_id}&protection=0")
+
+
+def parse_lookback(raw):
+    """纯函数：解析 get_lookback_list 的响应体，返回 data 段。
+
+    code != 0 时抛出带人话提示的 RuntimeError（见 CODE_HINT）。
+    抽成纯函数是为了能单测——错误码翻译是改版时最先要看的东西。
+    """
+    d = json.loads(raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw)
     code = d.get("code")
     if code != 0:
         raise RuntimeError(f"接口返回 code={code}：{CODE_HINT.get(code, '未知错误')}"
                            f"（msg={d.get('msg')}）")
-    return h5, d["data"]
+    data = d.get("data")
+    if data is None:
+        raise RuntimeError("接口 code=0 但 data 为空，可能改版了")
+    return data
+
+
+def get_lookback(app_id, alive_id, cookie):
+    h5 = h5_base(app_id)
+    raw = http_get(lookback_api(app_id, alive_id), cookie, h5 + "/")
+    return h5, parse_lookback(raw)
 
 
 def get_title(app_id, alive_id, cookie, h5, type_=None, resource_type=None):
@@ -225,17 +202,29 @@ def pick_line(data, prefer=None):
     return opts[0]
 
 
-def grab_playlist(s, ext, cookie, h5, out_m3u8):
-    """下载 m3u8（必要时自动解 [xiaoe] 混淆）。返回 m3u8 文本。"""
-    txt = http_get(s["url"], cookie, h5 + "/").decode("utf-8", "replace")
+def grab_playlist(s, ext, cookie, h5, out_m3u8, app_id=None):
+    """下载 m3u8（必要时自动解 [xiaoe] 混淆）。返回 m3u8 文本。
+
+    主路径上 `playlist_eof.m3u8` 是**明文**的，解混淆分支基本不会走到；
+    留着是兜底。真走到了会打印 [crypto]，那时候值得留意一下。
+    """
+    raw = http_get(s["url"], cookie, h5 + "/").decode("utf-8", "replace")
+    txt = raw
     if not txt.lstrip().startswith("#EXTM3U"):
-        # 可能是混淆播放列表，走本地解码器
+        # 可能是混淆播放列表，走本地解码器。密钥就是 app_id。
+        if not app_id:
+            m = re.match(r"https?://([a-zA-Z0-9]+)\.h5\.xiaoeknow\.com", h5 or "")
+            app_id = m.group(1) if m else None
         try:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-            import xiaoe_crypto
-            key = ext.get("app_id") or ""
-            txt = xiaoe_crypto.decode(txt, key) if key else xiaoe_crypto.decode(txt)
+            txt = xiaoe_crypto.decode(xiaoe_crypto.strip_prefix(txt), app_id)
             print("    [crypto] 已解混淆播放列表")
+            # 机会主义留样本：下次真遇到 [xiaoe] 就落一份原始文本，
+            # 给 tests/data/raw_xiaoe.bin 当真实测试向量用。
+            dump = os.environ.get("XIAOE_DUMP_RAW")
+            if dump:
+                with open(dump, "w", encoding="utf-8") as f:
+                    f.write(raw)
+                print(f"    [crypto] 原始响应已存到 {dump}")
         except Exception as e:
             print(f"    [!] 解混淆失败：{e}")
     with open(out_m3u8, "w", encoding="utf-8") as f:
@@ -377,7 +366,7 @@ def run_one(url, app_id, alive_id, cookie, args, index=None, total=None):
     os.makedirs(tmpdir, exist_ok=True)
     m3u8_path = os.path.join(tmpdir, "playlist.m3u8")
 
-    txt = grab_playlist(s, ext, cookie, h5, m3u8_path)
+    txt = grab_playlist(s, ext, cookie, h5, m3u8_path, app_id)
     segs = parse_segments(txt)
     print(f"{tag}分片 {len(segs)} 个")
     if not segs:

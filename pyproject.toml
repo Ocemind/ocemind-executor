@@ -1,0 +1,20 @@
+[project]
+name = "xiaoe-downloader"
+version = "1.0.0"
+description = "小鹅通回放下载器 —— 只要给课程链接，自动出 1080p MP4"
+requires-python = ">=3.10"
+dependencies = ["requests>=2.31"]
+
+[project.optional-dependencies]
+# 自动登录用。刻意不放进主依赖：exe 要保持轻量，不带 Playwright。
+# 只有从源码跑时才需要 `pip install -e ".[auth]"`。
+auth = ["playwright>=1.40"]
+dev = ["pytest>=7.4"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "--strict-markers -m 'not network'"
+markers = [
+    "network: 需要真实联网/真 cookie 的测试，默认跳过（-m network 才跑）",
+]

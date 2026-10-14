@@ -31,7 +31,16 @@ import urllib.parse
 
 ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
 IDX = {c: i for i, c in enumerate(ALPHABET)}
-DEFAULT_KEY = "appbgzjnopv1917"
+
+# 播放器 JS 里 `arguments[1] || "appbgzjnopv1917"` 的那个兜底值。
+# 注意这**不是笔误**，是上游 JS 自带的默认值——但它是某个特定 app 的密钥，
+# 对我们自己的 app 来说几乎肯定是错的。
+# 真正该传的密钥是 **app_id**（见 download.grab_playlist 的调用点）。
+JS_DEFAULT_KEY = "appbgzjnopv1917"
+
+# 兼容旧名字。不要拿它当默认值用。
+DEFAULT_KEY = JS_DEFAULT_KEY
+
 TAIL_LEN = 3
 
 
@@ -39,8 +48,14 @@ def md5_hex(s: str) -> str:
     return hashlib.md5(s.encode("utf-8")).hexdigest()
 
 
-def decode(encoded: str, key: str = DEFAULT_KEY) -> str:
-    """encoded: 去掉 '[xiaoe]' 前缀后的原始(仍带 %XX 转义)字符串。"""
+def decode(encoded: str, key: str) -> str:
+    """encoded: 去掉 '[xiaoe]' 前缀后的原始(仍带 %XX 转义)字符串。
+
+    key 必须显式传（通常是 app_id）。这里刻意不给默认值：
+    用错密钥不会抛异常，只会解出一堆乱码，静默给错答案比报错难查得多。
+    """
+    if not key:
+        raise ValueError("必须传 key（通常是 app_id）；没有默认值可用")
     t = md5_hex(key)
     e = urllib.parse.unquote(encoded)
 

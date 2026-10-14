@@ -1,0 +1,11 @@
+# 运行必需
+requests>=2.31
+
+# 打包（只有要重做 exe 时才需要）
+pyinstaller>=6.0
+
+# 开发
+pytest>=7.4
+
+# 自动登录（源码运行时才需要；exe 刻意不带，见 README）
+# playwright>=1.40
