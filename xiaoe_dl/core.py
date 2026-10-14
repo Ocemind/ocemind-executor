@@ -60,7 +60,14 @@ def _session():
     return s
 
 
-def http_get(url, cookie, referer, timeout=40, retries=4):
+def http_get(url, cookie, referer, timeout=40, retries=4, byte_range=None):
+    """`byte_range=(start, end)` 是**闭区间**（含两端），需要服务端支持 Range 头。
+
+    有的课程分片按**字节区间**寻址：整场直播切成几百片，但分片名完全相同，
+    只靠 URL 上的 `start`/`end` 区分。实测这个 CDN **完全不看那两个查询参数**
+    —— 每次请求都返回整个文件（4.4MB / 60 秒），只有 HTTP `Range` 头才认。
+    不翻译成 Range 的话，906 片会各下一遍完整文件，拼出 15 小时的视频。
+    """
     hdr = {
         "User-Agent": UA,
         "Referer": referer,
@@ -69,12 +76,22 @@ def http_get(url, cookie, referer, timeout=40, retries=4):
         "Accept-Language": "zh-CN,zh;q=0.9",
         "Cookie": cookie,
     }
+    want = None
+    if byte_range:
+        start, end = byte_range
+        hdr["Range"] = f"bytes={start}-{end}"
+        want = end - start + 1
     last = None
     for i in range(retries):
         try:
             r = _session().get(url, headers=hdr, timeout=timeout)
-            if r.status_code != 200:
+            if r.status_code not in (200, 206):
                 raise RuntimeError(f"HTTP {r.status_code}")
+            # 要了区间却收到整份文件 = CDN 忽略了 Range，正是上面那个 bug 的成因。
+            # 这种数据看着「有内容」，拼起来却是错的 —— 宁可在这里炸掉。
+            if want is not None and r.status_code == 200 and len(r.content) > want:
+                raise RuntimeError(
+                    f"CDN 忽略了 Range 头（要 {want} 字节，收到 {len(r.content)}）")
             return r.content
         except Exception as e:
             last = e
@@ -226,21 +243,59 @@ def abs_url(seg, ext):
     return u
 
 
+def seg_range(seg):
+    """分片名里若带 `start`/`end` 字节区间，返回闭区间 `(start, end)`，否则 None。
+
+    这不是标准的 `#EXT-X-BYTERANGE`，是小鹅通自己加在查询串上的。注意
+    **不能把它们从 URL 里删掉** —— URL 带签名，查询串在签名覆盖范围内。
+
+    区间是**两端都含**的：`start=0&end=300235` 对应 300236 字节。
+    """
+    q = up.parse_qs(up.urlparse(seg).query)
+    a = (q.get("start") or [None])[0]
+    b = (q.get("end") or [None])[0]
+    if a is None or b is None:
+        return None
+    try:
+        start, end = int(a), int(b)
+    except ValueError:
+        return None
+    if start < 0 or end < start:
+        return None
+    return start, end
+
+
 def download_all(segs, ext, cookie, h5, tmpdir, workers=12, label=""):
     os.makedirs(tmpdir, exist_ok=True)
-    urls = [abs_url(s, ext) for s in segs]
-    total = len(urls)
+    items = [(abs_url(s, ext), seg_range(s)) for s in segs]
+    total = len(items)
     done = [0]
     fail = []
 
-    def one(i_u):
-        i, u = i_u
+    def cached(fp, rng):
+        """临时目录里的旧分片能不能直接复用。
+
+        区间寻址时**不能只看「文件够大」**：曾经每片都下回整个文件（4.4MB，
+        远大于区间），旧判据会认为它下好了而跳过 —— 于是重跑永远修不好，
+        只会一遍遍拼出同一个 15 小时视频。区间响应只可能**小于等于**区间
+        长度，比区间还大就一定是错的，必须重下。
+        """
+        if not os.path.exists(fp):
+            return False
+        size = os.path.getsize(fp)
+        if size <= 1024:
+            return False
+        return not (rng is not None and size > rng[1] - rng[0] + 1)
+
+    def one(i_item):
+        i, (u, rng) = i_item
         fp = os.path.join(tmpdir, f"{i:05d}.ts")
-        if os.path.exists(fp) and os.path.getsize(fp) > 1024:
+        if cached(fp, rng):
             done[0] += 1
             return None
         try:
-            b = http_get(u, cookie, h5 + "/", timeout=60, retries=4)
+            b = http_get(u, cookie, h5 + "/", timeout=60, retries=4,
+                          byte_range=rng)
             if not b:
                 raise RuntimeError("空响应")
             with open(fp, "wb") as f:
@@ -255,7 +310,7 @@ def download_all(segs, ext, cookie, h5, tmpdir, workers=12, label=""):
             return (i, u, str(e))
 
     with cf.ThreadPoolExecutor(max_workers=workers) as ex:
-        list(ex.map(one, list(enumerate(urls, 1))))
+        list(ex.map(one, list(enumerate(items, 1))))
 
     # 重试失败项
     if fail:
@@ -264,7 +319,8 @@ def download_all(segs, ext, cookie, h5, tmpdir, workers=12, label=""):
         for i, u, _ in fail:
             fp = os.path.join(tmpdir, f"{i:05d}.ts")
             try:
-                b = http_get(u, cookie, h5 + "/", timeout=60, retries=6)
+                b = http_get(u, cookie, h5 + "/", timeout=60, retries=6,
+                             byte_range=seg_range(segs[i - 1]))
                 with open(fp, "wb") as f:
                     f.write(b)
             except Exception as e:

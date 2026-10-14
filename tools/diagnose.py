@@ -239,11 +239,15 @@ def stage_playlist(ctx):
 
 def stage_segment(ctx):
     import requests
-    url = download.abs_url(ctx["segs"][0], ctx["ext"])
+
+    RANGE_LEN = 1024
+    seg0 = ctx["segs"][0]
+    url = download.abs_url(seg0, ctx["ext"])
+    rng = download.seg_range(seg0)
     hdr = {
         "User-Agent": download.UA,
         "Referer": ctx["h5"] + "/",
-        "Range": "bytes=0-1023",
+        "Range": f"bytes=0-{RANGE_LEN - 1}",
     }
     try:
         r = requests.get(url, headers=hdr, timeout=30)
@@ -258,8 +262,19 @@ def stage_segment(ctx):
 
     body = r.content
     head = body[:4].hex()
+    addr = (f"区间寻址 start={rng[0]} end={rng[1]}" if rng else "整文件寻址")
     detail = (f"HTTP {r.status_code}  取到 {len(body)} 字节  开头={head}  "
-              f"{url.split('/')[2]}")
+              f"{url.split('/')[2]}  {addr}")
+
+    # 明确要了 1024 字节却回了一整份文件 = CDN 不认 Range 头。
+    # 这一条**必须单独拦**：拿到的是货真价实的 TS 流，首字节、状态码全正常，
+    # 光看这个分片挑不出任何毛病 —— 但区间寻址的课程会因此每片都下回整个文件，
+    # 906 片叠成 15 小时的视频。2026-10-15 就是这么漏过去的，别再删。
+    if r.status_code == 200 and len(body) > RANGE_LEN:
+        return Result("5-segment", "", FAIL, detail,
+                      f"CDN 忽略了 Range 头（要 {RANGE_LEN} 字节，收到 {len(body)}）。"
+                      "区间寻址的课程会每片都下回完整文件，合出超长视频。"
+                      "检查 core.http_get 是否带上了 Range")
     # TS 流以同步字节 0x47 开头；拿到别的东西说明 CDN 返回了错误页
     if body and body[0] != 0x47:
         return Result("5-segment", "", FAIL, detail,
