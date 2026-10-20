@@ -9,9 +9,14 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
+from xiaoe_dl import core
+
 from . import config as config_mod
+from .course_engine import CourseDownloader, tmp_dir_for
 from .http_downloader import SegmentedDownload, probe_http
 from .ytdlp_engine import VideoDownloader
+
+KINDS = ("video", "file", "course")
 
 STATUS_TEXT = {
     "queued": "排队中",
@@ -48,7 +53,7 @@ def _unique_path(directory: Path, filename: str) -> Path:
 
 
 class TaskManager:
-    def __init__(self, cfg: config_mod.Config) -> None:
+    def __init__(self, cfg: config_mod.Config, start_scheduler: bool = True) -> None:
         self.cfg = cfg
         self.lock = threading.RLock()
         self.tasks: dict[str, dict] = {}
@@ -57,7 +62,9 @@ class TaskManager:
         self._last_save = 0.0
         self._running = True
         self._load()
-        threading.Thread(target=self._scheduler, daemon=True).start()
+        # 测试里要能只测数据层，不让后台线程把手一动就真去下载
+        if start_scheduler:
+            threading.Thread(target=self._scheduler, daemon=True).start()
 
     # ---------------- 持久化 ----------------
 
@@ -107,10 +114,21 @@ class TaskManager:
         if "://" not in url:
             url = "https://" + url
         directory = directory or self.cfg.get("defaultDir")
+        kind = kind if kind in KINDS else self._guess_kind(url)
+        course_key = self._course_key(url, directory) if kind == "course" else ""
+        if course_key:
+            with self.lock:
+                for other in self.tasks.values():
+                    if other.get("course_key") != course_key:
+                        continue
+                    if other.get("status") in ("done", "cancelled"):
+                        continue
+                    raise ValueError(
+                        f"这门课已经在队列里了：{other.get('title') or other['id']}")
         task = {
             "id": uuid.uuid4().hex[:12],
             "url": url,
-            "kind": kind if kind in ("video", "file") else self._guess_kind(url),
+            "kind": kind,
             "status": "queued",
             "title": title or url,
             "filename": "",
@@ -129,6 +147,11 @@ class TaskManager:
             "uploader": "",
             "is_playlist": False,
             "entry_count": 1,
+            # 课程任务：进度按分片数算，字节数那套采样对它不适用
+            "segments_done": 0,
+            "segments_total": 0,
+            "stage": "",
+            "course_key": course_key,
             "created_at": _now(),
             "updated_at": _now(),
         }
@@ -213,6 +236,8 @@ class TaskManager:
             task["speed"] = 0
             task["eta"] = None
             task["error"] = ""
+            task["segments_done"] = 0
+            task["stage"] = ""
             task["status"] = "queued"
         self._dirty = True
 
@@ -229,6 +254,9 @@ class TaskManager:
             if task_id not in self.active:
                 break
             time.sleep(0.1)
+        if task.get("kind") == "course":
+            # 课程临时目录是按任务 id 建的，移除任务后不会有人再来续传
+            self._remove_files(task)
         with self.lock:
             self.tasks.pop(task_id, None)
         self._dirty = True
@@ -257,6 +285,10 @@ class TaskManager:
             for tid in list(self.active):
                 task = self.tasks.get(tid)
                 if not task:
+                    continue
+                if task.get("kind") == "course":
+                    # 课程进度来自分片回调。这里若照常按字节数采样，
+                    # 会把刚写好的百分比用 0 覆盖回去，进度条来回跳。
                     continue
                 engine = task.get("_engine")
                 if engine is not None and task.get("kind") == "file":
@@ -302,7 +334,10 @@ class TaskManager:
             return
         result: dict
         try:
-            if task["kind"] == "video":
+            if task["kind"] == "course":
+                # 课程链接交给 yt-dlp 只会白跑一趟，别回退
+                result = self._run_course(task)
+            elif task["kind"] == "video":
                 result = self._run_video(task)
                 if not result.get("ok") and not result.get("cancelled"):
                     msg = (result.get("error") or "").lower()
@@ -425,9 +460,55 @@ class TaskManager:
                 task["filename"] = Path(result["path"]).name
         return result
 
+    def _run_course(self, task: dict) -> dict:
+        def on_progress(event: dict) -> None:
+            stage = event.get("stage")
+            with self.lock:
+                if stage == "resolving":
+                    task["stage"] = "解析中"
+                elif stage == "title":
+                    title = event.get("title")
+                    if title:
+                        task["title"] = title
+                elif stage == "output":
+                    path = event.get("path")
+                    if path:
+                        task["filename"] = os.path.basename(path)
+                elif stage == "segments":
+                    task["segments_total"] = int(event.get("total") or 0)
+                    task["stage"] = "下载分片"
+                elif stage == "downloading":
+                    done = int(event.get("done") or 0)
+                    total = int(event.get("total") or 0)
+                    task["segments_done"] = done
+                    if total:
+                        task["segments_total"] = total
+                        task["progress"] = round(min(100.0, done * 100.0 / total), 2)
+                elif stage == "merging":
+                    task["status"] = "merging"
+                    task["stage"] = "合并中"
+                    task["segments_done"] = task["segments_total"]
+                elif stage == "done":
+                    task["stage"] = "完成"
+
+        engine = CourseDownloader(self.cfg, task["id"], on_progress=on_progress)
+        with self.lock:
+            task["_control"] = engine
+        return engine.run(task["url"], task["dir"] or self.cfg.get("defaultDir"))
+
     # ---------------- 杂项 ----------------
 
     def _remove_files(self, task: dict) -> None:
+        if task.get("kind") == "course":
+            # 只清临时分片。已经合并好的 mp4 是用户的东西，取消任务也不能删。
+            import shutil
+
+            try:
+                shutil.rmtree(tmp_dir_for(task.get("url", ""), task.get("id", "")),
+                              ignore_errors=True)
+            except Exception:  # noqa: BLE001
+                pass
+            return
         directory = Path(task.get("dir") or "")
         name = task.get("filename") or ""
         if name:
@@ -447,9 +528,24 @@ class TaskManager:
 
     @staticmethod
     def _guess_kind(url: str) -> str:
+        if core.is_course_url(url):
+            return "course"
         path = urlparse(url).path.lower()
         suffix = os.path.splitext(path)[1]
         return "file" if suffix in FILE_EXTS else "video"
+
+    @staticmethod
+    def _course_key(url: str, directory: str) -> str:
+        """同一门课 + 同一个输出目录 = 同一条链路，不能重复排队。
+
+        没有这个键的话，用户连点两下「添加」就会有两个任务同时往同一个
+        xxx.mp4 里写，最后谁赢看运气。
+        """
+        app_id, alive_id = core.parse_course_url(url or "")
+        if not (app_id and alive_id):
+            return ""
+        folder = os.path.normcase(os.path.abspath(directory or ""))
+        return f"{app_id}:{alive_id}:{folder}"
 
     def shutdown(self) -> None:
         self._running = False
