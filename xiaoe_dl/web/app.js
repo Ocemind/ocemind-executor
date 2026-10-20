@@ -1,4 +1,4 @@
-/* TDM Lite 前端逻辑 */
+/* Timi 下载器前端逻辑 */
 
 const STATUS_TEXT = {
   queued: "排队中", downloading: "下载中", merging: "合并中",
@@ -10,10 +10,12 @@ const state = {
   filter: "all",
   settings: {},
   probe: null,
+  courseAuth: null,
   nodes: new Map(),
   busy: false,
   probeTimer: null,
   probeSeq: 0,
+  loginTimer: null,
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -23,6 +25,7 @@ const el = {
   conn: $("#conn-input"), list: $("#task-list"), empty: $("#empty"),
   probeCard: $("#probe-card"), probeThumb: $("#probe-thumb"),
   probeTitle: $("#probe-title"), probeMeta: $("#probe-meta"),
+  probeLogin: $("#probe-login"),
   title: $("#page-title"), modal: $("#settings-modal"), toast: $("#toast"),
   ytdlp: $("#tool-ytdlp"), ffmpeg: $("#tool-ffmpeg"),
 };
@@ -97,6 +100,7 @@ async function init() {
   }
   bindEvents();
   await refresh();
+  refreshCourseAuth();
   setInterval(refresh, 700);
 }
 
@@ -131,6 +135,19 @@ function bindEvents() {
     btn.addEventListener("click", () => setFilter(btn.dataset.filter));
   });
   el.list.addEventListener("click", onListClick);
+
+  el.probeLogin.addEventListener("click", () => startCourseLogin());
+  $("#btn-course-import").addEventListener("click", async () => {
+    const path = await pickCookieFile();
+    if (path) importCourseCookies({ path });
+  });
+  $("#btn-course-login").addEventListener("click", () => startCourseLogin());
+  $("#btn-course-check").addEventListener("click", () => refreshCourseAuth(true));
+  $("#btn-course-cookie-save").addEventListener("click", () => {
+    const text = $("#course-cookie-text").value.trim();
+    if (!text) { toast("先粘贴 cookies 内容", true); return; }
+    importCourseCookies({ text });
+  });
 }
 
 async function pickFolder(current) {
@@ -138,6 +155,13 @@ async function pickFolder(current) {
     try { return await window.pywebview.api.select_folder(current || ""); } catch (_) {}
   }
   return prompt("输入目录路径", current || "") || "";
+}
+
+async function pickCookieFile() {
+  if (window.pywebview && window.pywebview.api && window.pywebview.api.select_cookie_file) {
+    try { return await window.pywebview.api.select_cookie_file(""); } catch (_) {}
+  }
+  return prompt("输入 cookies.txt 的完整路径", "") || "";
 }
 
 /* ---------------- 链接探测 ---------------- */
@@ -165,6 +189,18 @@ async function probeUrl(url) {
 
 function renderProbe(info) {
   el.probeCard.classList.remove("hidden");
+  if (info.kind === "course") {
+    // 课程探测不联网，标题要等下载开始后由 title 事件补上
+    el.probeTitle.textContent = "小鹅通课程";
+    const bits = ["小鹅通课程"];
+    if (info.app_id) bits.push("app " + info.app_id);
+    bits.push(info.needs_cookie ? "⚠ 需要登录" : "登录态可用");
+    el.probeMeta.textContent = bits.join(" · ");
+    el.probeThumb.removeAttribute("src");
+    el.probeLogin.classList.toggle("hidden", !info.needs_cookie);
+    return;
+  }
+  el.probeLogin.classList.add("hidden");
   el.probeTitle.textContent = info.title || info.filename || "";
   const bits = [];
   if (info.kind === "video") {
@@ -185,12 +221,14 @@ function renderProbe(info) {
 function clearProbe() {
   state.probe = null;
   el.probeCard.classList.add("hidden");
+  el.probeLogin.classList.add("hidden");
   resetQualityOptions();
 }
 
 function applyQualityOptions(info) {
-  if (info.kind === "file") {
-    el.quality.innerHTML = '<option value="0">不适用（直链）</option>';
+  if (info.kind === "file" || info.kind === "course") {
+    el.quality.innerHTML = `<option value="0">不适用（${
+      info.kind === "course" ? "课程" : "直链"}）</option>`;
     el.quality.disabled = true;
     return;
   }
@@ -218,6 +256,98 @@ function resetQualityOptions() {
     '<option value="360">360P</option>',
   ].join("");
   el.quality.value = String(state.settings.defaultQuality || 0);
+}
+
+/* ---------------- 课程登录态 ---------------- */
+
+function courseAuthClass(info) {
+  if (!info.has_file) return "bad";
+  if (info.status && info.status.includes("过期")) return "bad";
+  if (info.status && info.status.includes("今天")) return "warn";
+  return "ok";
+}
+
+async function refreshCourseAuth(notify = false) {
+  try {
+    const info = await api("/api/course/auth");
+    state.courseAuth = info;
+    const line = $("#course-auth-line");
+    const where = info.has_file ? `${info.path}（${info.count} 条）` : info.canonical;
+    const text = info.has_file
+      ? `${where}　${info.status || "无有效期信息"}`
+      : `还没有 cookies.txt，导入后会存到 ${where}`;
+    line.textContent = text;
+    line.className = "course-auth-line " + courseAuthClass(info);
+    $("#btn-course-login").disabled = !info.playwright;
+    $("#btn-course-login").title = info.playwright
+      ? "" : "没装 playwright，用「导入 cookies 文件」";
+    if (notify) toast(info.has_file ? "登录态：" + (info.status || "已读取") : "还没有登录态");
+    return info;
+  } catch (err) {
+    if (notify) toast("读取登录态失败：" + err.message, true);
+    return null;
+  }
+}
+
+async function importCourseCookies(payload) {
+  try {
+    const res = await api("/api/course/cookies/import", {
+      method: "POST", body: JSON.stringify(payload),
+    });
+    toast(`已导入 ${res.imported} 条 cookie`);
+    $("#course-cookie-text").value = "";
+    await refreshCourseAuth();
+    scheduleProbe();
+  } catch (err) {
+    toast("导入失败：" + err.message, true);
+  }
+}
+
+async function startCourseLogin() {
+  const info = state.probe && state.probe.kind === "course" ? state.probe : {};
+  const app_id = info.app_id || "";
+  const alive_id = info.alive_id || "";
+  if (!app_id) {
+    toast("先在输入框里粘贴一个课程链接，再点登录", true);
+    return;
+  }
+  try {
+    await api("/api/course/login", {
+      method: "POST", body: JSON.stringify({ app_id, alive_id }),
+    });
+    toast("浏览器已打开，登录完成后会自动保存");
+    pollCourseLogin();
+  } catch (err) {
+    toast("登录失败：" + err.message, true);
+  }
+}
+
+function pollCourseLogin() {
+  clearInterval(state.loginTimer);
+  state.loginTimer = setInterval(async () => {
+    let s;
+    try {
+      s = await api("/api/course/login/status");
+    } catch (_) {
+      clearInterval(state.loginTimer);
+      return;
+    }
+    const line = $("#course-auth-line");
+    if (s.state === "running") {
+      line.textContent = (s.log || []).slice(-1)[0] || "等待你在浏览器里完成登录…";
+      line.className = "course-auth-line warn";
+      return;
+    }
+    clearInterval(state.loginTimer);
+    if (s.state === "done") {
+      toast("登录态已保存");
+      refreshCourseAuth();
+      scheduleProbe();
+    } else if (s.state === "error") {
+      toast("登录失败：" + s.error, true);
+      refreshCourseAuth();
+    }
+  }, 2000);
 }
 
 /* ---------------- 添加任务 ---------------- */
@@ -261,7 +391,7 @@ function setFilter(filter) {
   const titles = { all: "全部任务", downloading: "下载中", done: "已完成", error: "失败 / 已取消" };
   el.title.textContent = titles[filter] || "全部任务";
   const subs = {
-    all: "粘贴链接即可开始，视频会自动选择最佳音视频并合并",
+    all: "小鹅通课程、平台视频、任意直链都可以粘进来",
     downloading: "正在下载与排队中的任务",
     done: "已完成的文件",
     error: "失败或已取消的任务，可一键重试",
@@ -358,7 +488,7 @@ function updateTaskNode(node, t) {
     img.hidden = false; ico.hidden = true;
   } else {
     img.hidden = true; ico.hidden = false;
-    const glyph = t.kind === "video" ? "▶" : "▤";
+    const glyph = t.kind === "course" ? "🎓" : t.kind === "video" ? "▶" : "▤";
     if (ico.dataset.v !== glyph) { ico.textContent = glyph; ico.dataset.v = glyph; }
   }
 
@@ -395,6 +525,17 @@ function renderMeta(node, t) {
 
   if (t.status === "error") { add(t.error || "未知错误", "err"); return; }
   if (t.status === "cancelled") { add("已取消"); return; }
+  if (t.kind === "course") {
+    // 课程按分片计，没有字节数/速度可报
+    const seg = t.segments_total ? `${t.segments_done || 0}/${t.segments_total} 片` : "";
+    if (t.status === "done") { add(fmtBytes(t.size)); add("已保存"); return; }
+    if (t.status === "queued") { add("等待开始"); return; }
+    if (t.status === "merging") { add("正在合并分片…"); return; }
+    add(t.stage || (t.status === "paused" ? "已暂停" : "下载中"));
+    if (seg) add(seg);
+    add(`${(t.progress || 0).toFixed(1)}%`);
+    return;
+  }
   if (t.status === "done") {
     add(fmtBytes(t.size));
     if (t.kind === "file") add(`${t.connections || 8} 线程`);
@@ -483,6 +624,10 @@ function openSettings() {
   $("#set-proxy-port").value = s.proxyPort || "";
   $("#set-ytdlp").value = s.ytdlpPath || "";
   $("#set-ffmpeg").value = s.ffmpegPath || "";
+  $("#set-course-workers").value = s.courseWorkers || 24;
+  $("#set-course-line").value = s.courseLine || "";
+  $("#set-course-keep-ts").checked = !!s.courseKeepTs;
+  refreshCourseAuth();
   el.modal.classList.remove("hidden");
 }
 
@@ -510,6 +655,9 @@ async function saveSettingsForm() {
     proxyPort: $("#set-proxy-port").value.trim(),
     ytdlpPath: $("#set-ytdlp").value.trim(),
     ffmpegPath: $("#set-ffmpeg").value.trim(),
+    courseWorkers: Number($("#set-course-workers").value) || 24,
+    courseLine: $("#set-course-line").value.trim(),
+    courseKeepTs: $("#set-course-keep-ts").checked,
   };
   await saveSettings(values);
   el.dir.value = values.defaultDir || el.dir.value;

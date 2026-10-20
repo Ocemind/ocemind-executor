@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TDM Lite</title>
+<title>Timi 下载器</title>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -12,8 +12,8 @@
     <div class="brand">
       <div class="logo">⚡</div>
       <div class="brand-text">
-        <b>TDM Lite</b>
-        <small>下载工作站</small>
+        <b>Timi 下载器</b>
+        <small>课程 + 通用下载</small>
       </div>
     </div>
 
@@ -43,7 +43,7 @@
     <header class="page-head">
       <div>
         <h1 id="page-title">全部任务</h1>
-        <p id="page-sub" class="page-sub">粘贴链接即可开始，视频会自动选择最佳音视频并合并</p>
+        <p id="page-sub" class="page-sub">小鹅通课程、平台视频、任意直链都可以粘进来</p>
       </div>
       <div class="head-actions">
         <button id="btn-settings" class="icon-btn" title="设置">⚙</button>
@@ -55,7 +55,7 @@
         <div class="url-wrap">
           <span class="url-ico">🔗</span>
           <input id="url-input" type="text" spellcheck="false"
-                 placeholder="粘贴视频或文件链接：YouTube / B站 / X / 抖音 / 任意直链…">
+                 placeholder="粘贴小鹅通课程、视频或文件链接：xiaoeknow / YouTube / B站 / 抖音 / 任意直链…">
         </div>
         <button id="btn-paste" class="ghost">粘贴</button>
         <button id="btn-add" class="primary">添加下载</button>
@@ -91,6 +91,7 @@
           <div id="probe-title" class="probe-title"></div>
           <div id="probe-meta" class="probe-meta"></div>
         </div>
+        <button id="probe-login" class="ghost small hidden">登录一次</button>
       </div>
     </section>
 
@@ -147,6 +148,33 @@
           <option value="brave">Brave</option>
         </select>
       </div>
+
+      <div class="field course-block">
+        <label>课程登录态（小鹅通）</label>
+        <div id="course-auth-line" class="course-auth-line">检测中…</div>
+        <div class="row">
+          <button id="btn-course-import" class="ghost small">导入 cookies 文件</button>
+          <button id="btn-course-login" class="ghost small">在浏览器里登录一次</button>
+          <button id="btn-course-check" class="ghost small">刷新状态</button>
+        </div>
+        <textarea id="course-cookie-text" rows="3" spellcheck="false"
+                  placeholder="或把 Netscape 格式的 cookies.txt 内容粘在这里"></textarea>
+        <div class="row">
+          <button id="btn-course-cookie-save" class="ghost small">保存粘贴的内容</button>
+        </div>
+      </div>
+
+      <div class="field-grid">
+        <div class="field">
+          <label>课程并发分片数</label>
+          <input id="set-course-workers" type="number" min="1" max="64">
+        </div>
+        <div class="field">
+          <label>课程线路（留空自动）</label>
+          <input id="set-course-line" type="text" placeholder="tx / hw / byte">
+        </div>
+      </div>
+      <label class="check"><input id="set-course-keep-ts" type="checkbox"> 保留课程临时分片（排查问题用）</label>
 
       <div class="field">
         <label>代理</label>

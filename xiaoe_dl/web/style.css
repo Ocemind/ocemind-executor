@@ -27,17 +27,18 @@ html, body {
   overflow: hidden;
 }
 
-button, input, select { font: inherit; color: inherit; outline: none; }
+button, input, select, textarea { font: inherit; color: inherit; outline: none; }
 button { cursor: pointer; border: none; background: none; }
-input, select {
+input, select, textarea {
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 9px;
   padding: 9px 12px;
   transition: border-color .15s, background .15s;
 }
-input:focus, select:focus { border-color: var(--accent); background: var(--panel-3); }
+input:focus, select:focus, textarea:focus { border-color: var(--accent); background: var(--panel-3); }
 input[readonly] { color: var(--muted); cursor: default; }
+textarea { resize: vertical; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
 
 #app { display: flex; height: 100vh; }
 
@@ -291,6 +292,14 @@ input[readonly] { color: var(--muted); cursor: default; }
 .row input.narrow { flex: 0 0 92px; }
 .check { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
 .check input { accent-color: var(--accent); }
+
+/* ---------- 课程登录态 ---------- */
+
+.course-block { border-top: 1px solid var(--line-soft); padding-top: 14px; }
+.course-auth-line { font-size: 12.5px; color: var(--muted); }
+.course-auth-line.ok { color: #59d18c; }
+.course-auth-line.warn { color: #e8b23a; }
+.course-auth-line.bad { color: #ff6b6b; }
 
 /* ---------- Toast ---------- */
 

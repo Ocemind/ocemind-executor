@@ -10,8 +10,13 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from xiaoe_dl import auth, core, paths
+from xiaoe_dl.cookies import (cookie_status, find_cookie_path, find_ko_token,
+                              load_cookies, parse_netscape)
+
 from . import tools
 from .config import Config
+from .course_auth import LoginSession
 from .http_downloader import probe_http
 from .manager import TaskManager
 from .ytdlp_engine import probe as probe_video
@@ -36,6 +41,40 @@ class SettingsBody(BaseModel):
     values: dict
 
 
+class CookieImportBody(BaseModel):
+    text: str = ""
+    path: str = ""
+
+
+class LoginBody(BaseModel):
+    app_id: str = ""
+    alive_id: str = ""
+
+
+def course_auth_status(cfg: Config) -> dict:
+    """当前课程登录态。只读本地文件，不联网。"""
+    path = find_cookie_path(cfg.get("courseCookieFile") or None)
+    count, message = cookie_status(path) if path else (None, None)
+    return {
+        "path": path or "",
+        "count": count or 0,
+        "status": message or "",
+        "has_file": bool(path),
+        "canonical": os.path.join(paths.app_dir(), "cookies.txt"),
+        "playwright": auth.playwright_available(),
+    }
+
+
+def _needs_cookie(cfg: Config, app_id: str) -> bool:
+    path = find_cookie_path(cfg.get("courseCookieFile") or None)
+    if not path:
+        return True
+    try:
+        return find_ko_token(load_cookies(path)[1], app_id) is None
+    except Exception:  # noqa: BLE001
+        return True
+
+
 def _reveal(path: str) -> None:
     p = Path(path)
     if not p.exists():
@@ -47,7 +86,8 @@ def _reveal(path: str) -> None:
 
 
 def create_app(cfg: Config, manager: TaskManager) -> FastAPI:
-    app = FastAPI(title="TDM Lite", docs_url=None, redoc_url=None)
+    app = FastAPI(title="Timi 下载器", docs_url=None, redoc_url=None)
+    login = LoginSession()
 
     @app.middleware("http")
     async def no_cache(request, call_next):
@@ -102,6 +142,20 @@ def create_app(cfg: Config, manager: TaskManager) -> FastAPI:
 
     @app.post("/api/probe")
     def probe(body: ProbeBody):
+        if core.is_course_url(body.url):
+            # 探测框每 650 ms 触发一次，这里绝不能有网络等待：
+            # 只做本地 cookie 检查，标题等下载开始后由 title 事件补上。
+            app_id, alive_id = core.parse_course_url(body.url)
+            return {
+                "ok": True,
+                "kind": "course",
+                "title": "",
+                "app_id": app_id or "",
+                "alive_id": alive_id or "",
+                "needs_cookie": _needs_cookie(cfg, app_id or ""),
+                "cookie": course_auth_status(cfg),
+                "heights": [],
+            }
         info = probe_video(body.url, cfg)
         if not info.get("ok"):
             direct = probe_http(body.url, proxies=cfg.proxies())
@@ -111,6 +165,47 @@ def create_app(cfg: Config, manager: TaskManager) -> FastAPI:
                         "supports_range": direct["supports_range"]}
             return JSONResponse({"ok": False, "error": info.get("error")}, status_code=200)
         return {"ok": True, "kind": "video", **info}
+
+    # ---------------- 课程登录态 ----------------
+
+    @app.get("/api/course/auth")
+    def course_auth():
+        return course_auth_status(cfg)
+
+    @app.post("/api/course/cookies/import")
+    def import_cookies(body: CookieImportBody):
+        text = body.text or ""
+        if not text and body.path:
+            try:
+                text = Path(body.path).read_text(encoding="utf-8", errors="ignore")
+            except OSError as exc:
+                raise HTTPException(status_code=400, detail=f"读不了这个文件：{exc}") from exc
+        parsed = parse_netscape(text)
+        if not parsed:
+            raise HTTPException(
+                status_code=400,
+                detail="没解析出任何 cookie。需要浏览器扩展导出的 Netscape 格式 cookies.txt")
+        dest = os.path.join(paths.app_dir(), "cookies.txt")
+        try:
+            auth.save_cookies(parsed, dest)
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"保存失败：{exc}") from exc
+        status = course_auth_status(cfg)
+        status["imported"] = len(parsed)
+        return status
+
+    @app.post("/api/course/login")
+    def course_login(body: LoginBody):
+        try:
+            return login.start(body.app_id, body.alive_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/api/course/login/status")
+    def course_login_status():
+        return login.status()
 
     @app.get("/api/settings")
     def get_settings():
