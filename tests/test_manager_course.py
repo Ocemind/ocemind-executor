@@ -31,6 +31,14 @@ def test_course_url_is_detected(mgr, cfg):
     assert task["course_key"].startswith("app1:l_abcdef1234567890abcd:")
 
 
+def test_non_replay_link_is_refused(mgr, cfg):
+    """课程页里的普通视频链接（v_ 开头）没有回放 ID，不该进队列空跑一趟。"""
+    url = "https://app1.h5.xiaoeknow.com/p/course/video/v_6190abcd"
+    with pytest.raises(ValueError, match="回放 ID"):
+        mgr.add(url, "", 0, str(cfg.home), 0)
+    assert mgr.list() == []
+
+
 def test_duplicate_course_is_refused(mgr, cfg):
     mgr.add(URL, "course", 0, str(cfg.home), 0)
     with pytest.raises(ValueError, match="已经在队列里"):

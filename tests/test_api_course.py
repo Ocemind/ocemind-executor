@@ -52,6 +52,15 @@ def test_probe_course_never_hits_network(app, monkeypatch):
     assert info["needs_cookie"] is True
 
 
+def test_probe_non_replay_link_is_refused(app):
+    """课程页的普通视频链接没有回放 ID，探测时就该说清楚，别等下载才报错。"""
+    info = endpoint(app, "/api/probe")(api_mod.ProbeBody(
+        url="https://app1.h5.xiaoeknow.com/p/course/video/v_6190abcd"))
+
+    assert info["ok"] is False
+    assert "回放 ID" in info["error"]
+
+
 def test_probe_course_sees_valid_cookie(app, tmp_path):
     endpoint(app, "/api/course/cookies/import")(
         api_mod.CookieImportBody(text=COOKIE_TEXT))

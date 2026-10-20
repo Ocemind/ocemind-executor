@@ -146,6 +146,10 @@ def create_app(cfg: Config, manager: TaskManager) -> FastAPI:
             # 探测框每 650 ms 触发一次，这里绝不能有网络等待：
             # 只做本地 cookie 检查，标题等下载开始后由 title 事件补上。
             app_id, alive_id = core.parse_course_url(body.url)
+            if not alive_id:
+                # 课程页 / 视频页的普通链接取不到回放 ID，加进队列也下不了。
+                return {"ok": False,
+                        "error": "这条链接里没有回放 ID（l_ 开头），小鹅通下载只支持课程回放链接"}
             return {
                 "ok": True,
                 "kind": "course",

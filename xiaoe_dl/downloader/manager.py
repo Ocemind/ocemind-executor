@@ -116,6 +116,11 @@ class TaskManager:
         directory = directory or self.cfg.get("defaultDir")
         kind = kind if kind in KINDS else self._guess_kind(url)
         course_key = self._course_key(url, directory) if kind == "course" else ""
+        if kind == "course" and not course_key:
+            # 小鹅通域名下的普通视频页（v_ 开头）不是回放。放它进队列只会
+            # 让任务跑一趟再报错，不如当场说清楚。
+            raise ValueError(
+                "这条链接里没有回放 ID（l_ 开头），小鹅通下载只支持课程回放链接")
         if course_key:
             with self.lock:
                 for other in self.tasks.values():
