@@ -116,6 +116,20 @@ def parse_course_url(url):
     return app_id, alive_id
 
 
+def is_course_url(url):
+    """是不是小鹅通课程链接（按域名判断，不看路径）。
+
+    只看域名是刻意的：课程页、h5 页、分享短链都落在 xiaoeknow.com 及其子域，
+    而分片 CDN 在 xet.tech / 腾讯云那些地方。反过来若只看 URL 里有没有
+    `xiaoeknow.com` 字样，带该参数的 CDN 直链就会被误判成课程。
+    """
+    try:
+        host = (up.urlparse(url or "").hostname or "").lower()
+    except ValueError:
+        return False
+    return host == "xiaoeknow.com" or host.endswith(".xiaoeknow.com")
+
+
 def h5_base(app_id):
     return f"https://{app_id}.h5.xiaoeknow.com"
 
@@ -265,12 +279,42 @@ def seg_range(seg):
     return start, end
 
 
-def download_all(segs, ext, cookie, h5, tmpdir, workers=12, label=""):
+def _emit(cb, stage, **fields):
+    """进度回调。UI 出错绝不能把下载带崩，一律吞掉。"""
+    if not cb:
+        return
+    try:
+        cb({"stage": stage, **fields})
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def download_all(segs, ext, cookie, h5, tmpdir, workers=12, label="",
+                 on_progress=None, stop_event=None):
+    """下全部分片。`on_progress` 收 `{"stage": "downloading", "done", "total"}`。
+
+    `stop_event` 只在**分片边界**检查：已经在路上的请求会跑完（单请求超时
+    60 秒封顶），所以按暂停后线程池还要再忙一小会儿才退。这不影响正确性——
+    分片是按序号落盘的，下次续传照样接得上。
+    """
     os.makedirs(tmpdir, exist_ok=True)
     items = [(abs_url(s, ext), seg_range(s)) for s in segs]
     total = len(items)
     done = [0]
     fail = []
+    lock = threading.Lock()
+    last_emit = [0.0]
+
+    def progress(force=False):
+        if not on_progress:
+            return
+        now = time.monotonic()
+        with lock:
+            if not force and now - last_emit[0] < 0.25:
+                return
+            last_emit[0] = now
+            n = done[0]
+        _emit(on_progress, "downloading", done=n, total=total)
 
     def cached(fp, rng):
         """临时目录里的旧分片能不能直接复用。
@@ -287,11 +331,21 @@ def download_all(segs, ext, cookie, h5, tmpdir, workers=12, label=""):
             return False
         return not (rng is not None and size > rng[1] - rng[0] + 1)
 
+    def finished():
+        with lock:
+            done[0] += 1
+            n = done[0]
+        if n % 25 == 0 or n == total:
+            print(f"    {label}{n}/{total} ({n * 100 // total}%)", flush=True)
+        progress(force=(n == total))
+
     def one(i_item):
         i, (u, rng) = i_item
         fp = os.path.join(tmpdir, f"{i:05d}.ts")
         if cached(fp, rng):
-            done[0] += 1
+            finished()
+            return None
+        if stop_event is not None and stop_event.is_set():
             return None
         try:
             b = http_get(u, cookie, h5 + "/", timeout=60, retries=4,
@@ -300,10 +354,7 @@ def download_all(segs, ext, cookie, h5, tmpdir, workers=12, label=""):
                 raise RuntimeError("空响应")
             with open(fp, "wb") as f:
                 f.write(b)
-            done[0] += 1
-            if done[0] % 25 == 0 or done[0] == total:
-                pct = done[0] * 100 // total
-                print(f"    {label}{done[0]}/{total} ({pct}%)", flush=True)
+            finished()
             return None
         except Exception as e:
             fail.append((i, u, str(e)))
@@ -313,10 +364,13 @@ def download_all(segs, ext, cookie, h5, tmpdir, workers=12, label=""):
         list(ex.map(one, list(enumerate(items, 1))))
 
     # 重试失败项
-    if fail:
+    if fail and not (stop_event is not None and stop_event.is_set()):
         print(f"    {label}重试 {len(fail)} 个失败分片 ...")
         still = []
         for i, u, _ in fail:
+            if stop_event is not None and stop_event.is_set():
+                still.append((i, "已停止"))
+                continue
             fp = os.path.join(tmpdir, f"{i:05d}.ts")
             try:
                 b = http_get(u, cookie, h5 + "/", timeout=60, retries=6,
@@ -329,41 +383,75 @@ def download_all(segs, ext, cookie, h5, tmpdir, workers=12, label=""):
     return fail
 
 
-def merge(tmpdir, n, out_path):
+CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def merge(tmpdir, n, out_path, ffmpeg=None):
+    """concat 成 mp4。先写 `<名字>.tmp.mp4` 再原子改名。
+
+    直接往目标路径写的话，中途崩掉（或用户强杀）会留下一个「文件存在但
+    没写完」的 mp4，下次跑就被当成「已存在，跳过」——比没有还糟。
+    """
     lst = os.path.join(tmpdir, "filelist.txt")
     with open(lst, "w", encoding="utf-8") as f:
         for i in range(1, n + 1):
             fp = os.path.join(tmpdir, f"{i:05d}.ts")
             f.write(f"file '{fp}'\n")
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
-    ff = find_ffmpeg()
+    ff = find_ffmpeg(ffmpeg)
+    tmp_out = out_path + ".tmp.mp4"
     cmd = [ff, "-y", "-hide_banner", "-loglevel", "warning",
            "-f", "concat", "-safe", "0", "-i", lst,
-           "-c", "copy", "-bsf:a", "aac_adtstoasc", out_path]
+           "-c", "copy", "-bsf:a", "aac_adtstoasc", tmp_out]
     print("    [ffmpeg] 合并中 ...")
-    r = subprocess.run(cmd, capture_output=True, text=True)
+    r = subprocess.run(cmd, capture_output=True, text=True,
+                       creationflags=CREATE_NO_WINDOW)
     if r.returncode != 0:
         print(r.stderr[-1500:])
         # 退化方案：重新封装
         cmd2 = [ff, "-y", "-hide_banner", "-loglevel", "warning",
-                "-f", "concat", "-safe", "0", "-i", lst, out_path]
-        r = subprocess.run(cmd2, capture_output=True, text=True)
+                "-f", "concat", "-safe", "0", "-i", lst, tmp_out]
+        r = subprocess.run(cmd2, capture_output=True, text=True,
+                           creationflags=CREATE_NO_WINDOW)
         if r.returncode != 0:
             print(r.stderr[-1500:])
+            try:
+                os.remove(tmp_out)
+            except OSError:
+                pass
             raise RuntimeError("ffmpeg 合并失败")
+    os.replace(tmp_out, out_path)
     return out_path
 
 
 # ---------------------------------------------------------------- 主流程
-def run_one(url, app_id, alive_id, cookies, args, index=None, total=None):
+def run_one(url, app_id, alive_id, cookies, args, index=None, total=None,
+            on_progress=None, stop_event=None, tmpdir=None, ffmpeg=None):
     """下一个课程。
 
     `cookies` 是 list[Cookie]（不是拼好的头）：每个课程要按它自己的 app_id
     挑出对应那份登录态。批量下载多个小鹅通账号的课时，这一步不能省。
+
+    新增参数全部可选，命令行与 `tools/diagnose.py` 的调用方式不受影响：
+    `on_progress` 收事件字典（`resolving/title/output/segments/downloading/
+    merging/done/error/cancelled`），`stop_event` 在阶段边界检查，
+    `tmpdir` 允许每个任务用自己的临时目录，`ffmpeg` 覆盖合并用的可执行文件。
+
+    返回值仍是 bool：True=成功（含「已存在跳过」），False=失败或被打断。
+    被打断时调用方要自己看 `stop_event` 区分取消与真失败。
     """
     tag = f"[{index}/{total}] " if index else ""
+
+    def stopped():
+        return stop_event is not None and stop_event.is_set()
+
+    _emit(on_progress, "resolving", url=url)
     if not (app_id and alive_id):
         print(f"{tag}[!] 链接里没解析出 app_id/alive_id，跳过：{url}")
+        _emit(on_progress, "error", error="链接里没解析出 app_id/alive_id")
+        return False
+    if stopped():
+        _emit(on_progress, "cancelled")
         return False
 
     cookie = cookie_header(cookies, app_id)
@@ -373,6 +461,10 @@ def run_one(url, app_id, alive_id, cookies, args, index=None, total=None):
         h5, data = get_lookback(app_id, alive_id, cookie)
     except Exception as e:
         print(f"{tag}[!] 接口失败：{e}")
+        _emit(on_progress, "error", error=str(e))
+        return False
+    if stopped():
+        _emit(on_progress, "cancelled")
         return False
 
     li, cloud, lname, s, ext = pick_line(data, args.line)
@@ -387,42 +479,69 @@ def run_one(url, app_id, alive_id, cookies, args, index=None, total=None):
         if not ttl:
             ttl = f"{app_id}_{alive_id}"
             print(f"{tag}[!] 拿不到标题，用 {ttl}")
+        else:
+            _emit(on_progress, "title", title=ttl)
         out = os.path.join(args.dir, safe_name(ttl) + ".mp4")
         # 仅批量模式下重名才加序号，避免覆盖别的课程
         if total and total > 1 and os.path.exists(out):
             out = out[:-4] + f"_{index:02d}.mp4"
     print(f"{tag}输出 -> {out}")
+    _emit(on_progress, "output", path=out)
 
     if os.path.exists(out) and not args.force:
         print(f"{tag}[=] 已存在，跳过（--force 可覆盖）")
+        _emit(on_progress, "done", path=out)
         return True
 
-    tmpdir = os.path.join(os.environ.get("TEMP", "."),
-                          "xiaoe_" + alive_id[-8:])
+    tmpdir = tmpdir or os.path.join(os.environ.get("TEMP", "."),
+                                    "xiaoe_" + alive_id[-8:])
     os.makedirs(tmpdir, exist_ok=True)
     m3u8_path = os.path.join(tmpdir, "playlist.m3u8")
 
-    txt = grab_playlist(s, ext, cookie, h5, m3u8_path, app_id)
+    try:
+        txt = grab_playlist(s, ext, cookie, h5, m3u8_path, app_id)
+    except Exception as e:
+        print(f"{tag}[!] 播放列表获取失败：{e}")
+        _emit(on_progress, "error", error=str(e))
+        return False
     segs = parse_segments(txt)
     print(f"{tag}分片 {len(segs)} 个")
     if not segs:
         print(txt[:800])
+        _emit(on_progress, "error", error="播放列表里没有分片")
+        return False
+    _emit(on_progress, "segments", total=len(segs))
+    if stopped():
+        _emit(on_progress, "cancelled")
         return False
 
     n = args.test or len(segs)
     t0 = time.time()
-    fail = download_all(segs[:n], ext, cookie, h5, tmpdir, args.workers, tag)
+    fail = download_all(segs[:n], ext, cookie, h5, tmpdir, args.workers, tag,
+                        on_progress=on_progress, stop_event=stop_event)
     print(f"{tag}下载完成 {time.time()-t0:.0f}s，失败 {len(fail)}")
 
+    if stopped():
+        # 被暂停/取消：下载到哪算哪，分片留在临时目录里下次续传
+        _emit(on_progress, "cancelled")
+        return False
     if args.test:
         print(f"{tag}--test 模式，跳过合并。临时目录：{tmpdir}")
+        _emit(on_progress, "done", path="")
         return True
     if fail:
         print(f"{tag}[!] 缺失 {len(fail)} 个分片，重跑本命令可续传")
+        _emit(on_progress, "error", error=f"缺失 {len(fail)} 个分片")
         return False
 
-    merge(tmpdir, n, out)
+    # 合并不响应停止：ffmpeg 起跑后只能等它结束。开始前再看一眼。
+    if stopped():
+        _emit(on_progress, "cancelled")
+        return False
+    _emit(on_progress, "merging")
+    merge(tmpdir, n, out, ffmpeg=ffmpeg)
     print(f"{tag}✅ {out}  ({os.path.getsize(out)/1024/1024:.1f} MB)")
+    _emit(on_progress, "done", path=out)
 
     if not args.keep_ts:
         import shutil
