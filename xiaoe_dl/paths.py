@@ -15,7 +15,14 @@ def is_frozen():
 
 
 def app_dir():
-    """配置 / cookie 的规范存放位置（跟随用户漫游，换机器能带走配置）。"""
+    """配置 / cookie 的规范存放位置（跟随用户漫游，换机器能带走配置）。
+
+    `XIAOE_DL_HOME`（主）/ `TDMLITE_HOME`（合并前的旧变量，兼容保留）
+    可以把整个数据目录挪走，测试和便携场景靠它。
+    """
+    override = os.environ.get("XIAOE_DL_HOME") or os.environ.get("TDMLITE_HOME")
+    if override:
+        return override
     base = os.environ.get("APPDATA") or os.path.expanduser("~")
     return os.path.join(base, "xiaoe-dl")
 
@@ -86,8 +93,19 @@ def cookie_candidates():
 _FFMPEG_CACHE = []
 
 
-def find_ffmpeg():
-    """优先 PATH，其次常见安装位置。找不到就退回 'ffmpeg' 让 ffmpeg 自己报错。"""
+def reset_ffmpeg_cache():
+    """设置里改了 ffmpeg 路径之后必须调一次，否则还是用启动时找到的那个。"""
+    _FFMPEG_CACHE.clear()
+
+
+def find_ffmpeg(explicit=None):
+    """优先显式路径，其次 PATH，最后常见安装位置。
+
+    都找不到就退回 'ffmpeg' 让 ffmpeg 自己报错（返回 None 会让调用方更早炸，
+    但错误信息更难懂）。
+    """
+    if explicit:
+        return explicit
     if _FFMPEG_CACHE:
         return _FFMPEG_CACHE[0]
     cand = shutil.which("ffmpeg")

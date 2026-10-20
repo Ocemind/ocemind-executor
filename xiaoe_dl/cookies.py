@@ -27,14 +27,29 @@ class Cookie(NamedTuple):
     value: str
 
 
+def find_cookie_path(path=None):
+    """有就用它，没有就挑第一份存在的；都不存在返回 None。
+
+    **不抛异常**。Web 接口和后台线程必须用这个版本：`resolve_cookies` 抛的是
+    `SystemExit`（`BaseException`），在请求线程里会直接把线程干掉，
+    `except Exception` 也接不住。
+    """
+    if path:
+        return path if os.path.exists(path) else None
+    for p in cookie_candidates():
+        if os.path.exists(p):
+            return p
+    return None
+
+
 def resolve_cookies(path=None):
     """没指定就用第一份存在的 cookie 文件。"""
     if path:
         return path
+    found = find_cookie_path()
+    if found:
+        return found
     cands = cookie_candidates()
-    for p in cands:
-        if os.path.exists(p):
-            return p
     raise SystemExit(
         "[!] 找不到 cookies.txt，找过这些位置：\n    "
         + "\n    ".join(cands)
