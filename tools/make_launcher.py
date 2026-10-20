@@ -19,9 +19,10 @@ ISG 信誉放行可执行文件：老 exe 攒够了信誉所以能跑，但**每
 
 用法
 ----
-    python tools/make_launcher.py                  # 建启动器（旧 exe 自动改名避让）
-    python tools/make_launcher.py --no-rename      # 不动桌面上那个 exe
-    python tools/make_launcher.py --name "小鹅通"   # 自定义快捷方式名
+    python tools/make_launcher.py                  # 建「Timi 下载器」并清理旧快捷方式
+    python tools/make_launcher.py --tk             # 另建一个 Tk 界面入口
+    python tools/make_launcher.py --keep-old       # 不清理小鹅通/TDM Lite 的旧快捷方式
+    python tools/make_launcher.py --name "下载器"   # 自定义快捷方式名
     python tools/make_launcher.py --remove         # 卸载启动器
 """
 import argparse
@@ -38,7 +39,11 @@ if ROOT not in sys.path:
 
 from xiaoe_dl.paths import desktop_dir  # noqa: E402
 
-LAUNCHER_NAME = "小鹅通下载器"
+LAUNCHER_NAME = "Timi 下载器"
+TK_LAUNCHER_NAME = "Timi 下载器 (Tk)"
+ICON = os.path.join(ROOT, "timi.ico")
+#: 合并前的两个入口，建新快捷方式时顺手清掉，免得桌面上摆三个同功能的图标
+OLD_LAUNCHERS = ("小鹅通下载器.lnk", "TDM Lite.lnk")
 FROZEN_NAME = "小鹅通下载器.exe"
 FALLBACK_NAME = "小鹅通下载器（旧版备用）.exe"
 
@@ -105,9 +110,26 @@ def rename_frozen(desktop, out=print):
     return False
 
 
+def remove_old_launchers(desktop, out=print):
+    """删掉合并前的桌面入口。删不掉只提示，不影响新快捷方式。"""
+    for name in OLD_LAUNCHERS:
+        path = os.path.join(desktop, name)
+        if not os.path.exists(path):
+            continue
+        try:
+            os.remove(path)
+            out(f"[*] 已清理旧快捷方式：{name}")
+        except OSError as exc:
+            out(f"[!] 删不掉 {name}：{exc}")
+
+
 def main():
-    ap = argparse.ArgumentParser(description="在桌面建一个源码方式的小鹅通启动器")
-    ap.add_argument("--name", default=LAUNCHER_NAME, help="快捷方式名（不含 .lnk）")
+    ap = argparse.ArgumentParser(
+        description="在桌面建一个源码方式的 Timi 下载器启动器")
+    ap.add_argument("--name", default="", help="快捷方式名（不含 .lnk）")
+    ap.add_argument("--tk", action="store_true", help="建 Tk 界面入口（run.py --tk）")
+    ap.add_argument("--keep-old", action="store_true",
+                    help="不清理小鹅通下载器 / TDM Lite 的旧快捷方式")
     ap.add_argument("--no-rename", action="store_true",
                     help="不重命名桌面上现有的 小鹅通下载器.exe")
     ap.add_argument("--remove", action="store_true", help="删除启动器")
@@ -123,7 +145,8 @@ def main():
         print("[!] 没找到桌面目录，无法部署")
         return 1
 
-    lnk = os.path.join(desktop, args.name + ".lnk")
+    name = args.name or (TK_LAUNCHER_NAME if args.tk else LAUNCHER_NAME)
+    lnk = os.path.join(desktop, name + ".lnk")
 
     if args.remove:
         if os.path.exists(lnk):
@@ -143,30 +166,35 @@ def main():
         print(f"[!] 找不到入口 {entry}")
         return 1
 
-    # 启动器图标借用旧 exe 的（那是用户认得的那个图标）。
-    # 万一 exe 被删了，图标退化成 pythonw 的默认图标，但快捷方式照常能用。
-    fallback_exe = os.path.join(desktop, FALLBACK_NAME)
-    icon = None
-    if not args.no_rename:
-        rename_frozen(desktop)
-    if os.path.exists(fallback_exe):
-        icon = fallback_exe + ",0"
+    icon = ICON + ",0" if os.path.isfile(ICON) else None
+    if not icon:
+        # 没有 timi.ico 时退回旧 exe 的图标，再不行就用 pythonw 的默认图标
+        fallback_exe = os.path.join(desktop, FALLBACK_NAME)
+        if not args.no_rename:
+            rename_frozen(desktop)
+        if os.path.exists(fallback_exe):
+            icon = fallback_exe + ",0"
 
+    run_args = "run.py --tk" if args.tk else "run.py"
+    desc = ("Timi 下载器（Tk 备用界面）" if args.tk
+            else "Timi 下载器：小鹅通课程 + 通用下载")
     try:
-        make_shortcut(lnk, pythonw, "run.py", ROOT, icon=icon,
-                      desc="小鹅通课程下载器（源码方式，支持自动登录）")
+        make_shortcut(lnk, pythonw, run_args, ROOT, icon=icon, desc=desc)
     except RuntimeError as e:
         print(f"[!] 建快捷方式失败：{e}")
         return 1
 
+    if not args.keep_old:
+        remove_old_launchers(desktop)
+
     print(f"[*] 启动器已建：{lnk}")
-    print(f"    目标：{pythonw} run.py")
+    print(f"    目标：{pythonw} {run_args}")
     print(f"    工作目录：{ROOT}")
     if icon:
-        print(f"    图标：{fallback_exe}")
+        print(f"    图标：{icon}")
     print()
     print("    pythonw 是 GUI 子系统解释器，双击不会闪控制台窗口。")
-    print("    它比 exe 多支持自动登录（exe 里没打包 playwright）。")
+    print("    默认打开网页壳；要看报错就用 run.bat，或加 --tk 用旧界面。")
     return 0
 
 
