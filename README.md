@@ -1,20 +1,37 @@
-# 小鹅通回放下载器
+# Timi 下载器
 
-**只要给课程链接，自动出 1080p MP4。** 不需要 F12、不需要抓包、不需要往浏览器装插件、不需要重新登录。
+**小鹅通课程、平台视频、任意直链，一个窗口下完。**
 
-## 用法（两种）
+- **小鹅通回放**：给个课程链接就出 1080p MP4。不需要 F12、不需要抓包、
+  不需要往浏览器装插件
+- **通用下载**：YouTube / B站 / X / 抖音… 交给 yt-dlp；任意直链走自研多线程
+  Range 分片，实测 8 线程比单线程快约 9 倍
+- **同一个任务队列**：并发数、限速、暂停续传、失败重试；课程和普通下载混在
+  一张列表里
+
+## 用法（三种）
 
 ### A. 桌面（推荐，给不碰命令行的人用）
 
-桌面上双击 **`小鹅通下载器`** → 粘贴课程链接 → 点「开始下载」。
+桌面上双击 **`Timi 下载器`** → 粘贴链接 → 点「添加下载」。
 
-- 启动时会**自动读剪贴板**，如果剪贴板里正好是课程链接就直接填好，你只要点一下按钮
-- 一次可粘多条链接（一行一个），批量下载
-- 有进度条、实时日志、「打开文件夹」按钮
-- 顶部显示**登录凭证有效期**，快过期会提醒
-- 「导入 cookies…」按钮，换 cookie 不用手动翻 AppData
-- 保存目录会记住上次用的，存在 `%APPDATA%\xiaoe-dl\config.json`
+- 粘贴课程链接会提示「需要登录」；点一次「登录一次」或导入 cookies 即可
+- 课程任务显示分片进度（`231/796 片`），普通下载显示速度和剩余时间
+- 平台视频会自动选择最佳音视频并合并
+- 保存目录会记住上次用的
 - 需要 `ffmpeg`（已在系统 PATH 上）；找不到会去常见安装位置兜底找
+- 所有数据在一个目录：`%APPDATA%\xiaoe-dl\`
+  （`settings.json` 设置、`tasks.json` 任务列表、`cookies.txt` 登录态、`app.log`）
+
+默认是**网页界面套在原生窗口里**（pywebview）。两个备用入口：
+
+| 想干什么 | 怎么做 |
+|----------|--------|
+| 用系统浏览器打开（好调试） | `python run.py --web` |
+| 用旧的 Tk 界面 | `python run.py --tk`，或 `python tools/make_launcher.py --tk` 另建一个桌面入口 |
+| 看控制台的报错 | 双击 `run.bat` |
+
+没装 WebView2 / pywebview 时，原生窗口起不来会**自动退回浏览器**，不会一无所获。
 
 #### 为什么桌面放的是快捷方式，不是 exe
 
@@ -32,15 +49,16 @@ CodeIntegrity 事件 3077：未满足企业签名级别要求）。
 python tools/make_launcher.py
 ```
 
-桌面上另有 **`小鹅通下载器（旧版备用）.exe`** —— 重构前打的包，跑得起来，万一
-Python 环境坏了可以拿它应急。它和启动器只差一条：**不支持自动登录**（exe 为了
-控制体积没打包 playwright）。
+重构前打的那个 exe 已经不在桌面上了：它的能力（含自动登录）现在全在源码入口里，
+留着只会多一个分叉。`dist/` 下的旧产物仅作归档，别拿它当入口。
 
 > 若你确实想要一个能双击的独立 exe：得先关掉智能应用控制。那是**不可逆**的
 > （必须重装 Windows 才能再打开），会降低整机防护。为一个下载工具付这个代价不值。
 > 真要走这条路，`python tools/build_exe.py` 一条命令就能打包并部署到桌面。
 
-### B. 命令行
+### B. 命令行（课程）
+
+带任何参数时 `run.py` 走命令行模式，行为与合并前完全一致。
 
 ```bash
 # 单个课程（自动命名，存到 D:\视频）
@@ -64,6 +82,28 @@ python run.py --list urls.txt --dir "D:\视频\交易训练营"
 | `--test N` | 只下前 N 个分片验证连通性 |
 | `--login` | 登录态失效时打开浏览器让你登一次（默认不弹浏览器） |
 | `--no-browser` | 绝不打开浏览器，只用手上的 cookie 文件。**脚本/定时任务用这个** |
+
+### C. 通用下载（图形界面 / 网页）
+
+| 链接类型 | 引擎 | 说明 |
+|----------|------|------|
+| 小鹅通课程 | `core.run_one`（本仓库核心） | 取明文 m3u8 → 并发下分片 → ffmpeg 合并 |
+| 平台视频 | yt-dlp | 支持 cookie、代理、清晰度选择、播放列表 |
+| 任意直链 | 自研 Range 分片 | 断点续传（`.tdmpart` + `.tdmlite.json`）、限速、多线程 |
+
+yt-dlp 默认用 `python -m yt_dlp` 而不是 `yt-dlp.exe`：pip 生成的 exe 没有签名，
+在这台机器上会被**智能应用控制**拦掉；`python.exe` 是签过名的，跑模块没事。
+设置里显式填了 yt-dlp 路径的仍以它为准。
+
+### 分发：拷给别人怎么用
+
+1. 拷整个文件夹
+2. `pip install -r requirements.txt`
+3. 装 ffmpeg（放 PATH 或填进设置）
+4. 双击 `run.bat`，或者 `python tools/make_launcher.py` 建桌面快捷方式
+
+对方不需要 Python 之外的任何东西；没装 pywebview 时会退回浏览器，照样能用。
+自动登录（Playwright）是可选的：`pip install playwright && playwright install chromium`。
 
 ## 实测结果
 
@@ -116,8 +156,9 @@ python run.py --list urls.txt --dir "D:\视频\交易训练营"
 3. 脚本/exe 同目录的 `cookies.txt`（便携场景）
 4. `D:\视频\cookies.txt`（老位置，仅兼容）
 
-界面上的 **「导入 cookies…」** 按钮可以直接选一份导出的 cookies.txt（或 cookies.json）
-覆盖到规范位置，不用自己去翻 AppData。
+图形界面里 **设置 → 课程登录态 → 导入 cookies 文件** 可以直接选一份导出的
+cookies.txt（或 cookies.json）覆盖到规范位置，不用自己去翻 AppData；
+也可以把文件内容直接粘进下面的输入框。
 
 ### 哪条 cookie 才是关键的
 
@@ -138,11 +179,12 @@ python run.py --list urls.txt --dir "D:\视频\交易训练营"
 
 | 入口 | 操作 |
 |------|------|
-| 图形界面 | 点「登录一次」（exe 里这个按钮是灰的，见下） |
+| 图形界面 | 粘贴课程链接后点探测卡片上的「登录一次」；或设置里的「在浏览器里登录一次」 |
 | 命令行 | `python run.py --url "<课程链接>" --login` |
 | 单独登录 | `python -m xiaoe_dl.auth --login --app-id <app_id> --alive-id <alive_id>` |
 
-**不带 `--login` 时程序不会弹浏览器。**
+**队列里的课程任务绝不会自己弹浏览器**（跑到一半弹窗对批量任务就是灾难）。
+需要登录时由你显式点一下，登录窗口在后台会话里打开。
 
 > **为什么 exe 里用不了自动登录？** exe 为了控制体积把 playwright（约 150MB）
 > 排除掉了。桌面那个快捷方式走的是源码，**支持**自动登录——这也是它比 exe 强的地方。
@@ -204,7 +246,9 @@ python tools/diagnose.py --url "<课程链接>"
 | 分片时好时坏 | 签名过期（正常） | 重跑即可 |
 | 分片连不上 | 签名过期（正常） | 同上。持续失败才是改版 |
 | **视频时长明显偏长**（比如 66 分钟变成 15 小时） | 区间分片没按 `Range` 取，每片下回了整个文件 | 1.0.1 已修。先看 `diagnose` 第 5 段报的是哪种寻址 |
-| exe 双击没反应 | 智能应用控制拦截 | 改用桌面的「小鹅通下载器」快捷方式 |
+| exe 双击没反应 | 智能应用控制拦截 | 改用桌面的「Timi 下载器」快捷方式 |
+| 双击图标没窗口，浏览器却开了 | 没装 WebView2 / pywebview | 正常降级，照常使用；想用原生窗口就装 WebView2 |
+| 窗口一闪就没了 | 启动报错 | 用 `run.bat` 看控制台，或看 `%APPDATA%\xiaoe-dl\app.log` |
 
 ## 走过的弯路（已放弃，别再试）
 
@@ -226,16 +270,22 @@ python tools/diagnose.py --url "<课程链接>"
 
 | 文件 | 作用 |
 |------|------|
-| `run.py` | **唯一入口**。无参数起 GUI，带参数走命令行；也是 PyInstaller 的打包入口 |
-| `xiaoe_dl/core.py` | 核心管线（取流、拼分片、并发下载、ffmpeg 合并） |
-| `xiaoe_dl/gui.py` | 图形界面 |
+| `run.py` | **唯一入口**。无参数起网页壳，`--web` 浏览器，`--tk` 旧 Tk，其余参数走命令行 |
+| `run.bat` | 带控制台的启动入口（排查问题用） |
+| `xiaoe_dl/core.py` | 课程核心管线（取流、拼分片、并发下载、ffmpeg 合并） |
+| `xiaoe_dl/desktop.py` | 桌面壳：DPI、单实例、uvicorn、pywebview，失败退回浏览器 |
+| `xiaoe_dl/downloader/` | 任务队列与三种引擎（yt-dlp / Range 分片 / 课程） |
+| `xiaoe_dl/web/` | 网页界面（原生 HTML + CSS + JS，无构建步骤） |
+| `xiaoe_dl/gui.py` | 旧的 Tk 界面（`--tk`） |
 | `xiaoe_dl/cli.py` | 命令行参数解析 |
 | `xiaoe_dl/cookies.py` | cookie 文件读取、按域过滤、登录态有效期 |
+| `xiaoe_dl/auth.py` | 手动导入 / Playwright 自动登录 |
 | `xiaoe_dl/paths.py` | 路径与外部依赖（ffmpeg）定位 |
 | `xiaoe_dl/crypto.py` | `[xiaoe]` 混淆播放列表解码器（备用，主流程用不到） |
 | `tools/diagnose.py` | **分阶段链路诊断** —— 网站改版时先跑这个找断点 |
 | `tools/make_launcher.py` | 在桌面建/修启动器 |
 | `tools/build_exe.py` | 一条命令打包并部署 exe（智能应用控制下会被拦，见上文） |
-| `tests/` | 单测，`python -m pytest` |
+| `tests/` | 单测，`python -m pytest`（离线、秒级） |
+| `tests/manual/` | 联网的手动测试脚本，见该目录的 README |
 | `_explore/` | 探索期脚本，归档 |
 | `dist/小鹅通下载器.exe` | 打包产物（未部署，本机受策略拦截） |
