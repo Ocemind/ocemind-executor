@@ -1,6 +1,15 @@
 # 运行必需
 requests>=2.31
 
+# 网页壳（默认界面）：本地 HTTP 服务 + 原生窗口
+fastapi>=0.110
+uvicorn>=0.29
+pywebview>=5.0      # 没装也能用，会自动退回系统浏览器
+
+# 通用下载
+yt-dlp
+PySocks             # yt-dlp 走 socks 代理时才需要，装上省得临时报错
+
 # 打包（只有要重做 exe 时才需要）
 pyinstaller>=6.0
 

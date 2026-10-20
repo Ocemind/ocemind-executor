@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TDM Lite</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">⚡</div>
+      <div class="brand-text">
+        <b>TDM Lite</b>
+        <small>下载工作站</small>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item active" data-filter="all">
+        <span class="nav-ico">▦</span><span>全部任务</span><em id="c-all">0</em>
+      </button>
+      <button class="nav-item" data-filter="downloading">
+        <span class="nav-ico">↓</span><span>下载中</span><em id="c-downloading">0</em>
+      </button>
+      <button class="nav-item" data-filter="done">
+        <span class="nav-ico">✓</span><span>已完成</span><em id="c-done">0</em>
+      </button>
+      <button class="nav-item" data-filter="error">
+        <span class="nav-ico">!</span><span>失败/已取消</span><em id="c-error">0</em>
+      </button>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="tool-line"><span>yt-dlp</span><b id="tool-ytdlp">检测中…</b></div>
+      <div class="tool-line"><span>ffmpeg</span><b id="tool-ffmpeg">检测中…</b></div>
+      <div class="tool-line dim"><span>版本</span><b>0.1.0</b></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="page-head">
+      <div>
+        <h1 id="page-title">全部任务</h1>
+        <p id="page-sub" class="page-sub">粘贴链接即可开始，视频会自动选择最佳音视频并合并</p>
+      </div>
+      <div class="head-actions">
+        <button id="btn-settings" class="icon-btn" title="设置">⚙</button>
+      </div>
+    </header>
+
+    <section class="add-panel">
+      <div class="url-row">
+        <div class="url-wrap">
+          <span class="url-ico">🔗</span>
+          <input id="url-input" type="text" spellcheck="false"
+                 placeholder="粘贴视频或文件链接：YouTube / B站 / X / 抖音 / 任意直链…">
+        </div>
+        <button id="btn-paste" class="ghost">粘贴</button>
+        <button id="btn-add" class="primary">添加下载</button>
+      </div>
+
+      <div class="opts-row">
+        <label class="opt">
+          <span>画质</span>
+          <select id="quality-select">
+            <option value="0">最高画质</option>
+            <option value="2160">4K 2160P</option>
+            <option value="1440">2K 1440P</option>
+            <option value="1080" selected>1080P</option>
+            <option value="720">720P</option>
+            <option value="480">480P</option>
+            <option value="360">360P</option>
+          </select>
+        </label>
+        <label class="opt grow">
+          <span>保存到</span>
+          <input id="dir-input" readonly>
+        </label>
+        <button id="btn-dir" class="ghost small">选择</button>
+        <label class="opt narrow">
+          <span>线程</span>
+          <input id="conn-input" type="number" min="1" max="32" value="8">
+        </label>
+      </div>
+
+      <div id="probe-card" class="probe-card hidden">
+        <img id="probe-thumb" alt="">
+        <div class="probe-info">
+          <div id="probe-title" class="probe-title"></div>
+          <div id="probe-meta" class="probe-meta"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="task-list" class="task-list"></section>
+    <div id="empty" class="empty">
+      <div class="empty-ico">⇣</div>
+      <p>还没有任务</p>
+      <small>把链接粘到上面，点「添加下载」</small>
+    </div>
+  </main>
+</div>
+
+<!-- 设置 -->
+<div id="settings-modal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2>设置</h2>
+      <button id="btn-close-settings" class="icon-btn">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>默认保存目录</label>
+        <div class="row">
+          <input id="set-dir" type="text">
+          <button id="set-dir-pick" class="ghost small">浏览</button>
+        </div>
+      </div>
+      <div class="field-grid">
+        <div class="field">
+          <label>默认线程数</label>
+          <input id="set-conn" type="number" min="1" max="32">
+        </div>
+        <div class="field">
+          <label>同时下载任务数</label>
+          <input id="set-concurrent" type="number" min="1" max="10">
+        </div>
+        <div class="field">
+          <label>限速 (KB/s，0 不限)</label>
+          <input id="set-rate" type="number" min="0">
+        </div>
+        <div class="field">
+          <label>分片阈值 (MB)</label>
+          <input id="set-chunk" type="number" min="1" max="64">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>浏览器 Cookie（登录态 / 会员画质）</label>
+        <select id="set-cookie">
+          <option value="">不使用</option>
+          <option value="chrome">Chrome</option>
+          <option value="edge">Edge</option>
+          <option value="firefox">Firefox</option>
+          <option value="brave">Brave</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>代理</label>
+        <div class="row">
+          <input id="set-proxy-host" type="text" placeholder="127.0.0.1">
+          <input id="set-proxy-port" type="text" placeholder="7890" class="narrow">
+          <select id="set-proxy-type">
+            <option value="http">HTTP</option>
+            <option value="socks5">SOCKS5</option>
+          </select>
+          <label class="check"><input id="set-proxy-on" type="checkbox"> 启用</label>
+        </div>
+      </div>
+
+      <div class="field-grid">
+        <div class="field">
+          <label>yt-dlp 路径（留空自动）</label>
+          <input id="set-ytdlp" type="text" placeholder="自动检测">
+        </div>
+        <div class="field">
+          <label>ffmpeg 路径（留空自动）</label>
+          <input id="set-ffmpeg" type="text" placeholder="自动检测">
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button id="btn-save-settings" class="primary">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

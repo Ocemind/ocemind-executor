@@ -1,8 +1,13 @@
 # -*- coding: utf-8 -*-
 """唯一入口。PyInstaller 也是从这里打包。
 
-    python run.py                        # 图形界面
+    python run.py                        # 网页壳（原生窗口，失败退浏览器）
+    python run.py --web                  # 直接用浏览器打开
+    python run.py --tk                   # 旧的 Tk 界面（备用）
     python run.py --url "<课程链接>"      # 命令行
+
+fastapi / uvicorn / pywebview 都只在真正需要时才导入：Tk 与命令行用户
+不该为它们多等启动时间，也不该因为没装它们就跑不起来。
 
 包内一律用绝对导入（`from xiaoe_dl.x import y`），这样无论从哪个目录调用
 都不会因为模块搜索路径而失败。
@@ -66,11 +71,21 @@ def _run_cli():
 
 
 def main():
-    if len(sys.argv) > 1:
+    argv = sys.argv[1:]
+    if "--tk" in argv:
+        from xiaoe_dl.gui import main_gui
+
+        main_gui()
+    elif "--web" in argv:
+        from xiaoe_dl.desktop import main as desktop_main
+
+        desktop_main(force_browser=True)
+    elif argv:
         _run_cli()
     else:
-        from xiaoe_dl.gui import main_gui
-        main_gui()
+        from xiaoe_dl.desktop import main as desktop_main
+
+        desktop_main()
 
 
 if __name__ == "__main__":
