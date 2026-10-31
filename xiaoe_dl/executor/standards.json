@@ -1,0 +1,15 @@
+{
+  "title_max": 30,
+  "title_min": 4,
+  "desc_max": 2000,
+  "hashtag_max": 8,
+  "hashtag_required": false,
+  "cover_ratio": [3, 4],
+  "cover_ratio_tolerance": 0.02,
+  "banned_words": [
+    "最好的", "第一", "国家级", "史上最", "百分百", "绝对有效",
+    "稳赚", "包治", "永久有效"
+  ],
+  "require_cover": false,
+  "min_video_seconds": 8
+}

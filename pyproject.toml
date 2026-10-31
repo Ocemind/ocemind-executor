@@ -1,13 +1,13 @@
 [project]
-name = "xiaoe-downloader"
-version = "1.0.0"
-description = "小鹅通回放下载器 —— 只要给课程链接，自动出 1080p MP4"
+name = "ocemind-executor"
+version = "2.3.0"
+description = "Ocemind 内容执行器 —— 下载、转写、处理、发布，一个人一台机器"
 requires-python = ">=3.10"
 dependencies = ["requests>=2.31"]
 
 [project.optional-dependencies]
-# 自动登录用。刻意不放进主依赖：exe 要保持轻量，不带 Playwright。
-# 只有从源码跑时才需要 `pip install -e ".[auth]"`。
+# 自动登录和抖音解析用。刻意不放进主依赖：exe 要保持轻量，不带 Playwright。
+# 只有从源码跑时才需要 `pip install -e ".[auth]"`；抖音解析还需要本机 Chrome。
 auth = ["playwright>=1.40"]
 dev = ["pytest>=7.4"]
 

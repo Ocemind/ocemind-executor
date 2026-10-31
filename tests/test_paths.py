@@ -31,7 +31,7 @@ def test_frozen_mode_resource_dir_is_exe_dir(monkeypatch):
 
     直接改 sys.frozen / sys.executable 来模拟，不用真去打包一个 exe。
     """
-    fake_exe = r"C:\somewhere\desktop\小鹅通下载器.exe"
+    fake_exe = r"C:\somewhere\desktop\Ocemind 内容执行器.exe"
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", fake_exe)
     try:
@@ -94,6 +94,19 @@ def test_profile_dir_is_under_localappdata_not_appdata(monkeypatch):
     assert prof.startswith(r"C:\Users\X\AppData\Local")
     assert "Roaming" not in prof
     assert prof.endswith("browser_profile")
+
+
+def test_local_app_dir_can_be_overridden_for_portable(monkeypatch, tmp_path):
+    """便携版把浏览器 profile 也留在解压目录里，不写用户目录。"""
+    monkeypatch.setenv("XIAOE_DL_LOCAL_HOME", str(tmp_path))
+    assert paths.local_app_dir() == str(tmp_path)
+
+
+def test_local_app_dir_defaults_to_localappdata(monkeypatch):
+    monkeypatch.delenv("XIAOE_DL_LOCAL_HOME", raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", r"C:\Users\X\AppData\Local")
+    assert paths.local_app_dir() == os.path.join(
+        r"C:\Users\X\AppData\Local", "xiaoe-dl")
 
 
 def test_find_ffmpeg_returns_something_usable():

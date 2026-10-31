@@ -1,0 +1,18 @@
+{
+  "name": "ocemind-desktop",
+  "private": true,
+  "version": "2.3.0",
+  "description": "Ocemind 内容执行器的 Tauri 桌面壳",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "build:windows": "tauri build --config src-tauri/tauri.windows.conf.json",
+    "build:release:windows": "tauri build --config src-tauri/tauri.release.windows.conf.json",
+    "build:linux": "tauri build --config src-tauri/tauri.linux.conf.json",
+    "build:release:linux": "tauri build --config src-tauri/tauri.release.linux.conf.json"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4"
+  }
+}

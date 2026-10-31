@@ -1,0 +1,11 @@
+[Desktop Entry]
+Categories=Office;
+Comment=下载、转写、处理、发布
+Exec=ocemind-executor
+StartupWMClass=ocemind-executor
+Icon=ocemind-executor
+Name=Ocemind 内容执行器
+Name[zh_CN]=Ocemind 内容执行器
+GenericName=内容执行器
+Terminal=false
+Type=Application

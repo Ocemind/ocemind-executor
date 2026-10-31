@@ -230,7 +230,7 @@ class App:
                 "这个版本不含自动登录。\n\n"
                 "exe 为了控制体积把 playwright 排除掉了。两个办法：\n"
                 "  1. 用「导入 cookies…」导入一份导出的 cookies.txt\n"
-                "  2. 用源码方式跑（桌面的「小鹅通下载器」启动器），那边支持")
+                "  2. 用源码方式跑（桌面的「Ocemind 内容执行器」启动器），那边支持")
             return
 
         app_id, alive_id = self._target_from_input()

@@ -9,7 +9,8 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
-from xiaoe_dl import core
+from xiaoe_dl import core, douyin
+from xiaoe_dl.links import first_url
 
 from . import config as config_mod
 from .course_engine import CourseDownloader, tmp_dir_for
@@ -18,8 +19,13 @@ from .ytdlp_engine import VideoDownloader
 
 KINDS = ("video", "file", "course")
 
+#: 执行器能力任务用 capability 字段标记，kind 统一记成 "capability"。
+#: 这样老的三条下载分支一个字节都不用动。
+CAP_KIND = "capability"
+
 STATUS_TEXT = {
     "queued": "排队中",
+    "running": "处理中",
     "downloading": "下载中",
     "merging": "合并中",
     "paused": "已暂停",
@@ -38,6 +44,17 @@ FILE_EXTS = {
 
 def _now() -> float:
     return time.time()
+
+
+def _default_title(capability_id: str, inputs: dict, params: dict) -> str:
+    """任务列表里得有个像样的名字，别显示一串 UUID。"""
+    raw = (inputs.get("path") or inputs.get("url") or params.get("text")
+           or inputs.get("prompt") or params.get("prompt") or "")
+    name = os.path.basename(str(raw)) if raw else ""
+    if not name and capability_id == "publish.browser":
+        files = inputs.get("files") or []
+        name = os.path.basename(str(files[0])) if files else "发布"
+    return name or capability_id
 
 
 def _unique_path(directory: Path, filename: str) -> Path:
@@ -61,6 +78,9 @@ class TaskManager:
         self._dirty = False
         self._last_save = 0.0
         self._running = True
+        # 由 facade 注入；执行器任务要记用量（预算门控）和发布会话池
+        self.store = None
+        self.pool = None
         self._load()
         # 测试里要能只测数据层，不让后台线程把手一动就真去下载
         if start_scheduler:
@@ -79,7 +99,7 @@ class TaskManager:
         for item in data if isinstance(data, list) else []:
             if not isinstance(item, dict) or not item.get("id"):
                 continue
-            if item.get("status") in ("downloading", "merging"):
+            if item.get("status") in ("downloading", "merging", "running"):
                 item["status"] = "paused"
             item["speed"] = 0
             item["eta"] = None
@@ -107,20 +127,23 @@ class TaskManager:
     # ---------------- 对外接口 ----------------
 
     def add(self, url: str, kind: str, quality: int, directory: str,
-            connections: int, title: str = "") -> dict:
-        url = (url or "").strip()
-        if not url:
+            connections: int, title: str = "",
+            project: str = "", sequence: str = "") -> dict:
+        raw = (url or "").strip()
+        if not raw:
             raise ValueError("链接为空")
+        # 抖音等 App 的「复制链接」给的是一整段分享文案，先把 URL 摘出来
+        url = first_url(raw) or raw
         if "://" not in url:
             url = "https://" + url
         directory = directory or self.cfg.get("defaultDir")
         kind = kind if kind in KINDS else self._guess_kind(url)
         course_key = self._course_key(url, directory) if kind == "course" else ""
         if kind == "course" and not course_key:
-            # 小鹅通域名下的普通视频页（v_ 开头）不是回放。放它进队列只会
+            # 课程主页 / 普通视频页（v_ 开头）不是回放。放它进队列只会
             # 让任务跑一趟再报错，不如当场说清楚。
             raise ValueError(
-                "这条链接里没有回放 ID（l_ 开头），小鹅通下载只支持课程回放链接")
+                "这条链接里没有回放 ID（l_ 开头），加密下载只支持课程回放链接")
         if course_key:
             with self.lock:
                 for other in self.tasks.values():
@@ -157,6 +180,74 @@ class TaskManager:
             "segments_total": 0,
             "stage": "",
             "course_key": course_key,
+            "project": (project or "").strip(),
+            "sequence": (sequence or "").strip(),
+            "created_at": _now(),
+            "updated_at": _now(),
+        }
+        with self.lock:
+            self.tasks[task["id"]] = task
+            self._dirty = True
+        self._save(force=True)
+        return task
+
+    def add_capability(self, capability_id: str, inputs: dict | None = None,
+                       params: dict | None = None, title: str = "",
+                       idem: str = "", project: str = "",
+                       sequence: str = "") -> dict:
+        """加入一个执行器任务（转写/转码/OCR/发布…）。
+
+        和三引擎的下载任务共用同一个队列、同一套暂停取消——用户不需要
+        知道"这个活儿走的是哪条路"。
+        """
+        from xiaoe_dl.executor.engines import registry
+
+        cap = registry.get(capability_id)
+        if cap is None:
+            raise ValueError(f"未知能力: {capability_id}")
+        inputs = dict(inputs or {})
+        params = dict(params or {})
+        if idem:
+            with self.lock:
+                same = next((t for t in self.tasks.values()
+                             if t.get("idem") == idem
+                             and t.get("status") not in ("error", "cancelled")), None)
+            if same:
+                return same
+
+        task = {
+            "id": uuid.uuid4().hex[:12],
+            "url": str(inputs.get("url") or inputs.get("path") or ""),
+            "kind": CAP_KIND,
+            "capability": capability_id,
+            "status": "queued",
+            "title": title or _default_title(capability_id, inputs, params),
+            "filename": "",
+            "dir": params.get("dir") or inputs.get("dir") or "",
+            "size": 0,
+            "downloaded": 0,
+            "speed": 0,
+            "eta": None,
+            "progress": 0.0,
+            "progress_known": True,
+            "connections": 0,
+            "quality": 0,
+            "error": "",
+            "path": "",
+            "thumbnail": "",
+            "duration": None,
+            "uploader": "",
+            "is_playlist": False,
+            "entry_count": 1,
+            "segments_done": 0,
+            "segments_total": 0,
+            "stage": "",
+            "inputs": inputs,
+            "params": params,
+            "outputs": [],
+            "idem": idem,
+            "project": (project or "").strip(),
+            "sequence": (sequence or "").strip(),
             "created_at": _now(),
             "updated_at": _now(),
         }
@@ -295,6 +386,9 @@ class TaskManager:
                     # 课程进度来自分片回调。这里若照常按字节数采样，
                     # 会把刚写好的百分比用 0 覆盖回去，进度条来回跳。
                     continue
+                if task.get("kind") == CAP_KIND:
+                    # 执行器任务的进度由引擎自己上报（转写根本没有字节数）
+                    continue
                 engine = task.get("_engine")
                 if engine is not None and task.get("kind") == "file":
                     downloaded = engine.downloaded()
@@ -326,7 +420,7 @@ class TaskManager:
             task = self.tasks.get(task_id)
             if not task or task["status"] != "queued":
                 return
-            task["status"] = "downloading"
+            task["status"] = "running" if task.get("kind") == CAP_KIND else "downloading"
             task["error"] = ""
             task["_last_bytes"] = task.get("downloaded") or 0
             task["_last_time"] = _now()
@@ -339,12 +433,17 @@ class TaskManager:
             return
         result: dict
         try:
-            if task["kind"] == "course":
+            if task["kind"] == CAP_KIND:
+                result = self._run_capability(task)
+            elif task["kind"] == "course":
                 # 课程链接交给 yt-dlp 只会白跑一趟，别回退
                 result = self._run_course(task)
             elif task["kind"] == "video":
                 result = self._run_video(task)
-                if not result.get("ok") and not result.get("cancelled"):
+                # 抖音解析失败时不能退回直链下载：分享页是一张网页，
+                # 下回来的会是 HTML，不是视频
+                if (not result.get("ok") and not result.get("cancelled")
+                        and not douyin.is_douyin_url(task.get("url", ""))):
                     msg = (result.get("error") or "").lower()
                     if "unsupported url" in msg or "no suitable" in msg:
                         result = self._run_file(task)
@@ -364,7 +463,10 @@ class TaskManager:
             task["updated_at"] = _now()
             if result.get("ok"):
                 task["status"] = "done"
-                path = result.get("path") or ""
+                outputs = result.get("outputs") or []
+                path = result.get("path") or (outputs[0] if outputs else "")
+                if outputs:
+                    task["outputs"] = outputs
                 task["path"] = path
                 if path:
                     task["filename"] = os.path.basename(path)
@@ -385,6 +487,107 @@ class TaskManager:
                 task["error"] = result.get("error") or "未知错误"
         self._dirty = True
         self._save(force=True)
+        if task["status"] == "done":
+            self._archive_outputs(task)
+
+    def _archive_outputs(self, task: dict) -> None:
+        """登记产物，按需在后台同步飞书。
+
+        登记是本地 SQLite，毫秒级；同步要起 CLI、可能要几十秒，
+        所以另开线程。飞书掉线、没登录、表结构不对，都不该让任务变成失败。
+        """
+        if not self.store:
+            return
+        try:
+            from xiaoe_dl.executor import artifacts
+            rows = artifacts.index_task(self.store, task)
+        except Exception:  # noqa: BLE001
+            return
+        if not rows or not self.cfg.get("feishuEnabled"):
+            return
+        from xiaoe_dl.executor import feishu
+        snapshot = dict(task)
+        threading.Thread(target=feishu.sync_task,
+                         args=(self.cfg, self.store, snapshot), daemon=True).start()
+
+    # ---------------- 执行器能力 ----------------
+
+    def _budget_block(self, capability_id: str) -> str:
+        """付费能力开跑前查当月累计。超了直接失败，不是弹个提示就放行。"""
+        from xiaoe_dl.executor import backends
+        from xiaoe_dl.executor.engines import registry
+
+        cap = registry.get(capability_id)
+        if cap is None or not cap.paid:
+            return ""
+        # 本地引擎不计费：即使配了预算也不该拦
+        target = backends.resolve(self.cfg, capability_id)
+        if target.get("backend") == "local":
+            return ""
+        limit = float(self.cfg.get("monthlyBudget") or 0)
+        if limit <= 0:
+            return ""
+        spent = self.store.month_cost() if self.store else 0.0
+        if spent >= limit:
+            return (f"本月已用 ¥{spent:.2f}，达到预算上限 ¥{limit:.2f}。"
+                    f"调高预算或下个月再跑。")
+        return ""
+
+    def _run_capability(self, task: dict) -> dict:
+        from xiaoe_dl.executor.engines.base import Ctx
+        from xiaoe_dl.executor.engines.engine_map import build
+
+        cap_id = task.get("capability") or ""
+        blocked = self._budget_block(cap_id)
+        if blocked:
+            return {"ok": False, "error": blocked}
+
+        params = task.get("params") or {}
+        inputs = task.get("inputs") or {}
+        if cap_id == "publish.browser":
+            account_id = params.get("account_id") or inputs.get("account_id") or ""
+            account = self.store.get_account(account_id) if self.store else None
+            if not account:
+                return {"ok": False, "error": "账号不存在或没有指定账号"}
+            task["_account"] = account
+
+        try:
+            engine = build(cap_id, pool=self.pool)
+        except KeyError as exc:
+            return {"ok": False, "error": str(exc)}
+
+        with self.lock:
+            task["status"] = "running"
+            if hasattr(engine, "stop"):
+                task["_control"] = engine
+
+        workdir = Path(self.cfg.home) / "work" / task["id"]
+        try:
+            workdir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+
+        def on_progress(event: dict) -> None:
+            with self.lock:
+                value = event.get("progress")
+                if value is None:
+                    # 没有确定总量的能力不画假百分比，前端显示不确定态
+                    task["progress_known"] = False
+                else:
+                    task["progress_known"] = True
+                    task["progress"] = round(float(value), 2)
+                stage = event.get("stage")
+                if stage:
+                    task["stage"] = stage
+
+        def on_usage(provider: str, capability: str, units: float,
+                     cost: float, detail: str = "") -> None:
+            if self.store:
+                self.store.add_usage(provider, capability, units, cost, detail)
+
+        ctx = Ctx(job=task, config=self.cfg, workdir=workdir,
+                  _progress=on_progress, _usage=on_usage)
+        return engine.run(ctx)
 
     # ---------------- 引擎 ----------------
 
@@ -420,9 +623,19 @@ class TaskManager:
                 if eta is not None:
                     task["eta"] = int(eta)
 
-        return engine.run(
+        result = engine.run(
             task["url"], Path(task["dir"]), int(task.get("quality") or 0), on_progress,
         )
+        # 抖音解析出来的标题比一长串分享链接好看；只在标题还是 URL 时替换
+        with self.lock:
+            if result.get("ok"):
+                if result.get("title") and task.get("title") == task["url"]:
+                    task["title"] = result["title"]
+                if result.get("duration"):
+                    task["duration"] = result["duration"]
+                if result.get("thumbnail") and not task.get("thumbnail"):
+                    task["thumbnail"] = result["thumbnail"]
+        return result
 
     def _run_file(self, task: dict) -> dict:
         directory = Path(task["dir"])
@@ -504,6 +717,9 @@ class TaskManager:
     # ---------------- 杂项 ----------------
 
     def _remove_files(self, task: dict) -> None:
+        if task.get("kind") == CAP_KIND:
+            # 执行器任务的产物是用户要的东西（转写稿、成片），取消就删会被骂
+            return
         if task.get("kind") == "course":
             # 只清临时分片。已经合并好的 mp4 是用户的东西，取消任务也不能删。
             import shutil

@@ -10,6 +10,10 @@ pywebview>=5.0      # 没装也能用，会自动退回系统浏览器
 yt-dlp
 PySocks             # yt-dlp 走 socks 代理时才需要，装上省得临时报错
 
+# 执行器：文档解析与图像处理（纯 Python，不用编译）
+pypdf>=4.0
+pillow>=10.0
+
 # 打包（只有要重做 exe 时才需要）
 pyinstaller>=6.0
 

@@ -50,6 +50,46 @@ DEFAULT_SETTINGS = {
     "courseLine": "",            # 空=第 1 条线路，也可填 tx/hw/byte
     "courseKeepTs": False,
     "courseCookieFile": "",      # 空=用规范位置 cookies.txt
+
+    # ---------------- 执行器：用哪个后端（本地优先，见 executor/backends.py） ----
+    # models 按能力保存选择：{"transcribe.asr": {"backend": "auto",
+    #   "provider": "siliconflow", "model": "...", "localModel": "small"}}
+    "models": {},
+    "localModelDir": "",            # 本地模型缓存目录，留空用 HuggingFace 默认
+    # 各服务商密钥（按能力分别选服务商，互不影响）
+    "siliconflowKey": "",
+    "dashscopeKey": "",
+    "deepseekKey": "",
+    "groqKey": "",
+    "openaiKey": "",
+    "customBaseUrl": "",
+    "customKey": "",
+    # 兼容旧字段：没有 models 选择时作为回退
+    "asrProvider": "siliconflow",
+    "asrBaseUrl": "",
+    "asrModel": "",
+    "asrLanguage": "zh",
+    "autoTranscribe": True,         # 下载完自动转写
+    "monthlyBudget": 100.0,         # 元；超了直接拒绝付费调用
+
+    # ---------------- 执行器：账号浏览器 ----------------
+    "chromePath": "",
+    "headless": False,
+    "screencastQuality": 70,
+    "screencastMaxWidth": 1280,
+    "keepBrowserAliveSeconds": 900,
+
+    # ---------------- 执行器：Agent 接入 ----------------
+    "apiToken": "",
+
+    # ---------------- 执行器：飞书协同（产出索引 + 云文档） ----------------
+    # 走本机已登录的 lark-cli，不在这里存 App Secret
+    "feishuEnabled": False,
+    "feishuCli": "",                 # 空 = 从 PATH 找 lark-cli
+    "feishuBaseToken": "",           # 多维表格 app_token，也可直接粘表格链接
+    "feishuTableId": "",             # 索引表 table_id
+    "feishuFolderToken": "",         # 云文档放哪个文件夹，空 = 我的空间
+    "feishuDocMode": "text",         # text = 文字产出转云文档；off = 只登记索引
 }
 
 

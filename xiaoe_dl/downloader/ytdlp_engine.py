@@ -7,6 +7,8 @@ import subprocess
 import threading
 from pathlib import Path
 
+from xiaoe_dl import douyin
+
 from . import tools
 
 CREATE_NO_WINDOW = tools.CREATE_NO_WINDOW
@@ -41,6 +43,9 @@ def _env() -> dict:
 
 
 def probe(url: str, cfg) -> dict:
+    if douyin.is_douyin_url(url):
+        # yt-dlp 解析抖音必然被签名挡住；这里只跟短链，不动浏览器
+        return douyin.probe_url(url)
     cmd = _base_cmd(cfg) + [
         "-J", "--flat-playlist", "--playlist-items", "1", "--no-warnings", url,
     ]
@@ -118,6 +123,8 @@ class VideoDownloader:
 
     def run(self, url: str, out_dir: Path, height: int, on_progress=None) -> dict:
         out_dir.mkdir(parents=True, exist_ok=True)
+        if douyin.is_douyin_url(url):
+            return self._run_douyin(url, out_dir, on_progress)
         cmd = _base_cmd(self.cfg, need_ffmpeg=True) + [
             "-f", format_selector(height),
             "--newline", "--no-color", "--no-mtime", "--no-warnings",
@@ -201,3 +208,28 @@ class VideoDownloader:
             except OSError:
                 final_path = ""
         return {"ok": True, "path": final_path}
+
+    def _run_douyin(self, url: str, out_dir: Path, on_progress=None) -> dict:
+        """抖音走浏览器解析 + DASH 双流合并；画质只能取最高，height 参数不适用。"""
+        def report(event: dict) -> None:
+            if not on_progress:
+                return
+            if event.get("status") == "merging":
+                on_progress({"status": "merging"})
+                return
+            on_progress({
+                "status": "downloading",
+                "downloaded": event.get("downloaded") or 0,
+                "total": event.get("total") or 0,
+                "filename": event.get("filename") or "",
+            })
+
+        rate_kb = int(self.cfg.get("maxRateKB") or 0)
+        return douyin.download_url(
+            url, out_dir,
+            connections=int(self.cfg.get("defaultConnections") or 8),
+            rate_bytes=rate_kb * 1024 if rate_kb > 0 else 0,
+            proxies=self.cfg.proxies(),
+            on_progress=report,
+            should_stop=lambda: self._stopped,
+        )

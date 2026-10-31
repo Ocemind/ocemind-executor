@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "主窗口的默认能力。界面只走本机 HTTP 接口，不直接碰文件系统。",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

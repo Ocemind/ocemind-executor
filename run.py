@@ -3,7 +3,9 @@
 
     python run.py                        # 网页壳（原生窗口，失败退浏览器）
     python run.py --web                  # 直接用浏览器打开
+    python run.py --serve --port 8765    # 只起本地服务，给 Tauri 壳当 sidecar
     python run.py --tk                   # 旧的 Tk 界面（备用）
+    python run.py --exec capabilities    # 执行器的 CLI（给 Agent 用）
     python run.py --url "<课程链接>"      # 命令行
 
 fastapi / uvicorn / pywebview 都只在真正需要时才导入：Tk 与命令行用户
@@ -15,6 +17,8 @@ fastapi / uvicorn / pywebview 都只在真正需要时才导入：Tk 与命令�
 import contextlib
 import os
 import sys
+import threading
+import time
 import traceback
 
 
@@ -70,9 +74,78 @@ def _run_cli():
         print(f"日志：{log_path}")
 
 
+def _serve(argv):
+    """只起本地 HTTP 服务，不开窗口。Tauri 壳用这个当 sidecar。
+
+    端口默认取 `OCEMIND_PORT`，也可以 `--port` 指定；传 0 让系统分配。
+    服务起来后往 stdout 打一行 `OCEMIND_READY port=...`，壳层用它确认
+    端口（即使传了 0 也能拿到真实值）。
+    """
+    import uvicorn
+
+    from xiaoe_dl.downloader.api import create_app
+    from xiaoe_dl.downloader.config import Config
+    from xiaoe_dl.downloader.manager import TaskManager
+
+    port = int(os.environ.get("OCEMIND_PORT") or "8765")
+    if "--port" in argv:
+        try:
+            port = int(argv[argv.index("--port") + 1])
+        except (IndexError, ValueError):
+            print("--port 需要一个数字", file=sys.stderr)
+            raise SystemExit(2) from None
+
+    cfg = Config()
+    # 打包成窗口程序（console=False）时 stdout/stderr 可能是 None；
+    # 有 Rust 壳接管管道时它们是真流，这里不会动。
+    from xiaoe_dl.desktop import _redirect_stdout
+
+    _redirect_stdout(cfg.log_path)
+
+    manager = TaskManager(cfg)
+    app = create_app(cfg, manager)
+    server = uvicorn.Server(uvicorn.Config(
+        app, host="127.0.0.1", port=port,
+        log_level="warning", access_log=False,
+    ))
+    # /api/shutdown 靠它把 uvicorn 的退出标志立起来
+    app.state.server = server
+
+    def announce():
+        for _ in range(1200):  # 最多等 60 秒
+            if server.started:
+                actual = port
+                try:
+                    actual = server.servers[0].sockets[0].getsockname()[1]
+                except (AttributeError, IndexError, OSError):
+                    pass
+                print(f"OCEMIND_READY port={actual}", flush=True)
+                return
+            if server.should_exit:
+                return
+            time.sleep(0.05)
+
+    threading.Thread(target=announce, daemon=True).start()
+    try:
+        server.run()
+    finally:
+        executor = getattr(app.state, "executor", None)
+        if executor is not None:
+            try:
+                executor.close()
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            manager.shutdown()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def main():
     argv = sys.argv[1:]
-    if "--tk" in argv:
+    if "--serve" in argv:
+        _serve(argv)
+    elif "--tk" in argv:
         from xiaoe_dl.gui import main_gui
 
         main_gui()
@@ -80,6 +153,11 @@ def main():
         from xiaoe_dl.desktop import main as desktop_main
 
         desktop_main(force_browser=True)
+    elif "--exec" in argv:
+        # 执行器的命令行：和界面共用同一个后端，只是换个入口
+        from xiaoe_dl.executor.cli import main as exec_main
+
+        raise SystemExit(exec_main(argv[argv.index("--exec") + 1:]))
     elif argv:
         _run_cli()
     else:

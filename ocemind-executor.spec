@@ -2,7 +2,7 @@
 """PyInstaller 打包配置。
 
 用法（必须从项目根目录执行）：
-    python -m PyInstaller --noconfirm --clean "小鹅通下载器.spec"
+    python -m PyInstaller --noconfirm --clean "ocemind-executor.spec"
 
 三个容易踩的坑，改这个文件时留意：
   1. 入口必须是 run.py（项目根），pathex 要给 "."，否则包 xiaoe_dl 找不到
@@ -41,7 +41,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='小鹅通下载器',
+    name='Ocemind 内容执行器',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

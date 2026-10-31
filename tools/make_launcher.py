@@ -19,7 +19,7 @@ ISG 信誉放行可执行文件：老 exe 攒够了信誉所以能跑，但**每
 
 用法
 ----
-    python tools/make_launcher.py                  # 建「Timi 下载器」并清理旧快捷方式
+    python tools/make_launcher.py                  # 建「Ocemind 内容执行器」并清理旧快捷方式
     python tools/make_launcher.py --tk             # 另建一个 Tk 界面入口
     python tools/make_launcher.py --keep-old       # 不清理小鹅通/TDM Lite 的旧快捷方式
     python tools/make_launcher.py --name "下载器"   # 自定义快捷方式名
@@ -39,13 +39,16 @@ if ROOT not in sys.path:
 
 from xiaoe_dl.paths import desktop_dir  # noqa: E402
 
-LAUNCHER_NAME = "Timi 下载器"
-TK_LAUNCHER_NAME = "Timi 下载器 (Tk)"
+LAUNCHER_NAME = "Ocemind 内容执行器"
+TK_LAUNCHER_NAME = "Ocemind 内容执行器 (Tk)"
 ICON = os.path.join(ROOT, "timi.ico")
 #: 合并前的两个入口，建新快捷方式时顺手清掉，免得桌面上摆三个同功能的图标
-OLD_LAUNCHERS = ("小鹅通下载器.lnk", "TDM Lite.lnk")
-FROZEN_NAME = "小鹅通下载器.exe"
-FALLBACK_NAME = "小鹅通下载器（旧版备用）.exe"
+#: 旧产品落在桌面上的真实文件名。只为迁移清理保留，不再用于界面、文档或新产物。
+_LEGACY_NAME = "小鹅通下载器"
+OLD_LAUNCHERS = (f"{_LEGACY_NAME}.lnk", "TDM Lite.lnk",
+                 "Timi 下载器.lnk", "Timi 下载器 (Tk).lnk")
+FROZEN_NAME = f"{_LEGACY_NAME}.exe"
+FALLBACK_NAME = f"{_LEGACY_NAME}（旧版备用）.exe"
 
 
 def find_pythonw():
@@ -125,13 +128,13 @@ def remove_old_launchers(desktop, out=print):
 
 def main():
     ap = argparse.ArgumentParser(
-        description="在桌面建一个源码方式的 Timi 下载器启动器")
+        description="在桌面建一个源码方式的 Ocemind 内容执行器启动器")
     ap.add_argument("--name", default="", help="快捷方式名（不含 .lnk）")
     ap.add_argument("--tk", action="store_true", help="建 Tk 界面入口（run.py --tk）")
     ap.add_argument("--keep-old", action="store_true",
-                    help="不清理小鹅通下载器 / TDM Lite 的旧快捷方式")
+                    help="不清理旧版（小鹅通 / TDM Lite / Timi 下载器）的快捷方式")
     ap.add_argument("--no-rename", action="store_true",
-                    help="不重命名桌面上现有的 小鹅通下载器.exe")
+                    help="不重命名桌面上现有的旧版 exe")
     ap.add_argument("--remove", action="store_true", help="删除启动器")
     args = ap.parse_args()
 
@@ -176,8 +179,8 @@ def main():
             icon = fallback_exe + ",0"
 
     run_args = "run.py --tk" if args.tk else "run.py"
-    desc = ("Timi 下载器（Tk 备用界面）" if args.tk
-            else "Timi 下载器：小鹅通课程 + 通用下载")
+    desc = ("Ocemind 内容执行器（Tk 备用界面）" if args.tk
+            else "Ocemind 内容执行器：下载 · 转写 · 处理 · 发布")
     try:
         make_shortcut(lnk, pythonw, run_args, ROOT, icon=icon, desc=desc)
     except RuntimeError as e:

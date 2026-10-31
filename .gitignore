@@ -8,6 +8,8 @@ cookies*.json
 # ---------------------------------------------------------------- 产物
 dist/
 build/
+dist-sidecar/
+build-sidecar/
 *.log
 
 # ---------------------------------------------------------------- Python
@@ -23,6 +25,25 @@ env/
 # JS 快照 20MB，需要时可以重抓，不入库。
 # 注意：_explore/ 下其他 .py 是逆向证据链，改版排查时有用，要入库。
 _explore/xiaoe-js/
+
+# ---------------------------------------------------------------- 本地运行数据
+# 冒烟测试用的临时 home、截图验证目录，跑完就删，但别误入库。
+.smoke*/
+.shot/
+executor.db
+
+# ---------------------------------------------------------------- 令牌
+# 只落在本机，用完即删。管理令牌给 git/CI 用，更新令牌要编进安装包。
+.gh-admin-token
+.updater-token
+*.token
+
+# ---------------------------------------------------------------- Tauri 桌面壳
+desktop/node_modules/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+# sidecar 是 PyInstaller 产物，由 tools/build_sidecar.py 生成
+desktop/src-tauri/binaries/
 
 # ---------------------------------------------------------------- OS / 编辑器
 Thumbs.db

@@ -1,0 +1,92 @@
+name: desktop
+
+# 只手动跑，用来验证构建链路出不出包。发版走 release.yml：
+# 两边都挂在 v* 标签上的话，同一次发版会把两个包各打一遍。
+on:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python 依赖
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: 打包 Python sidecar
+        run: python tools/build_sidecar.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 前端依赖（只有 Tauri CLI）
+        working-directory: desktop
+        run: npm ci
+
+      - name: 构建 MSI
+        working-directory: desktop
+        run: npm run build:windows
+
+      - name: 打包便携版
+        run: python tools/make_portable_desktop.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ocemind-windows
+          path: |
+            desktop/src-tauri/target/release/bundle/msi/*.msi
+            dist/Ocemind-portable.zip
+
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev \
+            patchelf libssl-dev ffmpeg libfuse2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python 依赖
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: 打包 Python sidecar
+        run: python tools/build_sidecar.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 前端依赖（只有 Tauri CLI）
+        working-directory: desktop
+        run: npm ci
+
+      - name: 构建 AppImage
+        working-directory: desktop
+        run: npm run build:linux
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ocemind-linux
+          path: desktop/src-tauri/target/release/bundle/appimage/*.AppImage

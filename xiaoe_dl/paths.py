@@ -32,7 +32,13 @@ def local_app_dir():
 
     profile 里有几十 MB 的缓存，放进 APPDATA 会被域漫游反复同步，
     既慢又容易在别的机器上因为路径对不上而失效（ABE 密钥是绑路径的）。
+
+    便携版（exe 旁边有 portable.ini）用 `XIAOE_DL_LOCAL_HOME` 把
+    profile 也留在 U 盘 / 解压目录里，不写用户目录。
     """
+    override = os.environ.get("XIAOE_DL_LOCAL_HOME")
+    if override:
+        return override
     base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
     return os.path.join(base, "xiaoe-dl")
 
@@ -121,3 +127,44 @@ def find_ffmpeg(explicit=None):
                 break
     _FFMPEG_CACHE.append(cand or "ffmpeg")
     return _FFMPEG_CACHE[0]
+
+
+def ffmpeg_exe():
+    """返回可执行文件路径；找不到返回空串。
+
+    和 find_ffmpeg 的区别：那个为了兼容老调用会退回字符串 "ffmpeg"，
+    新代码里需要判断"到底有没有"，所以单独给一个诚实的版本。
+    """
+    cand = find_ffmpeg()
+    if cand and cand != "ffmpeg":
+        return cand
+    return shutil.which("ffmpeg") or ""
+
+
+_CHROME_CACHE = []
+
+
+def find_chrome():
+    """系统 Chrome 的可执行路径。执行器的账号浏览器要用它。"""
+    if _CHROME_CACHE:
+        return _CHROME_CACHE[0]
+    ok = lambda p: p and os.path.isfile(p)  # noqa: E731
+    cands = [
+        os.environ.get("OCEMIND_CHROME", ""),
+        shutil.which("google-chrome") or "",
+        shutil.which("chrome") or "",
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        os.path.join(os.environ.get("LOCALAPPDATA", ""),
+                     "Google", "Chrome", "Application", "chrome.exe"),
+        "/usr/bin/google-chrome",
+        "/usr/bin/chromium",
+        "/opt/google/chrome/chrome",
+    ]
+    found = next((c for c in cands if ok(c)), "")
+    _CHROME_CACHE.append(found)
+    return found
+
+
+def reset_chrome_cache():
+    _CHROME_CACHE.clear()

@@ -1,0 +1,15 @@
+{
+  "bundle": {
+    "targets": [
+      "msi"
+    ],
+    "publisher": "TimiHub",
+    "createUpdaterArtifacts": true,
+    "windows": {
+      "wix": {
+        "template": "wix/per-user-main.wxs",
+        "language": "zh-CN"
+      }
+    }
+  }
+}

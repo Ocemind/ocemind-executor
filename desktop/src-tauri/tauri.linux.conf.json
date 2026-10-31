@@ -1,0 +1,12 @@
+{
+  "productName": "ocemind",
+  "bundle": {
+    "targets": ["appimage"],
+    "linux": {
+      "deb": {
+        "depends": ["ffmpeg"],
+        "desktopTemplate": "linux/ocemind.desktop"
+      }
+    }
+  }
+}

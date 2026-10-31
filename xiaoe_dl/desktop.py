@@ -25,8 +25,8 @@ from xiaoe_dl.downloader.api import create_app
 from xiaoe_dl.downloader.config import Config
 from xiaoe_dl.downloader.manager import TaskManager
 
-APP_NAME = "Timi 下载器"
-MUTEX_NAME = "Local\\TimiDownloader_SingleInstance"
+APP_NAME = "Ocemind 内容执行器"
+MUTEX_NAME = "Local\\OcemindExecutor_SingleInstance"
 
 
 def _enable_dpi_awareness() -> None:
@@ -76,6 +76,19 @@ class JsApi:
         result = window.create_file_dialog(
             webview.FOLDER_DIALOG,
             directory=current if current and Path(current).is_dir() else "",
+        )
+        return result[0] if result else ""
+
+    def select_file(self, current: str = "") -> str:
+        """选一个待处理的文件（视频 / 音频 / 文档 / 图片）。"""
+        import webview
+
+        window = webview.windows[0] if webview.windows else None
+        if not window:
+            return ""
+        result = window.create_file_dialog(
+            webview.OPEN_DIALOG,
+            directory=str(Path(current).parent) if current else "",
         )
         return result[0] if result else ""
 
@@ -146,8 +159,8 @@ def _run_window(base: str) -> None:
     import webview
 
     webview.create_window(
-        APP_NAME, base, width=1060, height=720, min_size=(900, 580),
-        background_color="#14161b", js_api=JsApi(),
+        APP_NAME, base, width=1280, height=820, min_size=(980, 640),
+        background_color="#f6f7f9", js_api=JsApi(),
     )
     webview.start(debug=False)
 
@@ -183,5 +196,11 @@ def main(force_browser: bool = False) -> None:
                 # 没装 pywebview / 没装 WebView2：退回浏览器，至少能继续用
                 _run_browser(base)
     finally:
+        executor = getattr(app.state, "executor", None)
+        if executor is not None:
+            try:
+                executor.close()
+            except Exception:  # noqa: BLE001
+                pass
         manager.shutdown()
         server.should_exit = True

@@ -20,8 +20,8 @@ if ROOT not in sys.path:
 
 from xiaoe_dl.paths import desktop_dir  # noqa: E402
 
-SPEC = os.path.join(ROOT, "小鹅通下载器.spec")
-EXE_NAME = "小鹅通下载器.exe"
+SPEC = os.path.join(ROOT, "ocemind-executor.spec")
+EXE_NAME = "Ocemind 内容执行器.exe"
 
 
 def human(n):
@@ -29,7 +29,7 @@ def human(n):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="打包并部署小鹅通下载器 exe")
+    ap = argparse.ArgumentParser(description="打包并部署 Ocemind 内容执行器 exe")
     ap.add_argument("--no-deploy", action="store_true", help="只打包，不复制到桌面")
     args = ap.parse_args()
 

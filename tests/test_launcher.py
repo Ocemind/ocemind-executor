@@ -13,8 +13,8 @@ import make_launcher  # noqa: E402
 
 
 def test_remove_old_launchers_only_touches_known_names(tmp_path):
-    old_a = tmp_path / "小鹅通下载器.lnk"
-    old_b = tmp_path / "TDM Lite.lnk"
+    old_a = tmp_path / make_launcher.OLD_LAUNCHERS[0]
+    old_b = tmp_path / make_launcher.OLD_LAUNCHERS[1]
     keep = tmp_path / "别的快捷方式.lnk"
     for p in (old_a, old_b, keep):
         p.write_text("x", encoding="utf-8")
@@ -32,6 +32,8 @@ def test_remove_old_launchers_is_quiet_when_nothing_to_do(tmp_path):
     assert lines == []
 
 
-def test_new_launcher_name_is_timi():
-    assert make_launcher.LAUNCHER_NAME == "Timi 下载器"
+def test_new_launcher_name_is_ocemind():
+    assert make_launcher.LAUNCHER_NAME == "Ocemind 内容执行器"
     assert make_launcher.ICON.endswith("timi.ico")
+    # 改名前的入口必须在清理名单里，否则桌面上会并存多个同功能图标
+    assert "Timi 下载器.lnk" in make_launcher.OLD_LAUNCHERS
