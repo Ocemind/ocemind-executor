@@ -255,7 +255,7 @@
                      Component ... installs to user profile. It must use a registry
                      key under HKCU as its KeyPath, not a file. -->
                 <File Id="Bin_{{ bin.id }}" Source="{{bin.path}}" KeyPath="no"/>
-                <RegistryValue Root="HKCU" Key="Software\{{../manufacturer}}\{{../product_name}}"
+                <RegistryValue Root="HKCU" Key="Software\\{{../manufacturer}}\\{{../product_name}}"
                                Name="Bin{{ bin.id }}" Type="integer" Value="1" KeyPath="yes" />
             </Component>
             {{/each~}}
