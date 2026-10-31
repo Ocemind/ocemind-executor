@@ -156,4 +156,15 @@ jobs:
       - name: 重建 latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python tools/make_latest_json.py "${{ github.ref_name }}"
+        run: |
+          set -o pipefail
+          if ! python tools/make_latest_json.py "${{ github.ref_name }}" latest.json 2>&1 | tee manifest.log; then
+            msg=$(tail -c 1200 manifest.log | tr '\n' ' ')
+            echo "::error title=生成 latest.json 失败::${msg}"
+            exit 1
+          fi
+
+      - name: 上传 latest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" latest.json --clobber

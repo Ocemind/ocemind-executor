@@ -7,8 +7,8 @@
 
 这里改成从 Releases API 读真实资产名，名字怎么变都无所谓。
 
-用法（CI 里由 manifest job 调用）：
-    GITHUB_TOKEN=... GITHUB_REPOSITORY=owner/repo python tools/make_latest_json.py v2.3.0
+用法（CI 里由 manifest job 调用，上传交给 gh CLI）：
+    GITHUB_REPOSITORY=owner/repo python tools/make_latest_json.py v2.3.0 [输出路径]
 """
 
 from __future__ import annotations
@@ -25,20 +25,22 @@ API = "https://api.github.com"
 
 def _request(url: str, *, method: str = "GET", data: bytes | None = None,
              accept: str = "application/vnd.github+json") -> bytes:
-    token = os.environ["GITHUB_TOKEN"]
-    req = urllib.request.Request(
-        url,
-        data=data,
-        method=method,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": accept,
-            "User-Agent": "ocemind-release",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        return resp.read()
+    headers = {
+        "Accept": accept,
+        "User-Agent": "ocemind-release",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    # 仓库是公开的，只读接口匿名就能读；带上令牌只是为了避免限流。
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            return resp.read()
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode(errors="replace")[:800]
+        raise SystemExit(f"{method} {url} -> HTTP {exc.code}: {body}") from exc
 
 
 def _json(url: str, **kwargs) -> dict:
@@ -58,10 +60,11 @@ def _signature(asset: dict) -> str:
 
 
 def main() -> None:
-    if len(sys.argv) != 2:
-        raise SystemExit("用法: make_latest_json.py <tag>")
+    if len(sys.argv) < 2:
+        raise SystemExit("用法: make_latest_json.py <tag> [输出路径]")
 
     tag = sys.argv[1]
+    out_path = sys.argv[2] if len(sys.argv) > 2 else "latest.json"
     repo = os.environ["GITHUB_REPOSITORY"]
     release = _json(f"{API}/repos/{repo}/releases/tags/{tag}")
     assets = release["assets"]
@@ -94,18 +97,8 @@ def main() -> None:
         "pub_date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "platforms": platforms,
     }
-    body = json.dumps(manifest, ensure_ascii=False, indent=2).encode()
-
-    for asset in assets:
-        if asset["name"] == "latest.json":
-            _request(f"{API}/repos/{repo}/releases/assets/{asset['id']}", method="DELETE")
-
-    _request(
-        f"https://uploads.github.com/repos/{repo}/releases/{release['id']}/assets?name=latest.json",
-        method="POST",
-        data=body,
-        accept="application/json",
-    )
+    with open(out_path, "w", encoding="utf-8") as fh:
+        json.dump(manifest, fh, ensure_ascii=False, indent=2)
     print(json.dumps(manifest, ensure_ascii=False, indent=2))
 
 
