@@ -44,11 +44,26 @@ jobs:
         working-directory: desktop
         run: npm ci
 
+      - name: 规范化签名私钥
+        # 从记事本复制过来的密钥每行末尾带 CR，minisign 解不开
+        # （failed to decode secret key: Invalid symbol 13）。这里统一去掉。
+        shell: bash
+        env:
+          RAW_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          key="${RAW_KEY//$'\r'/}"
+          printf '%s' "$key" > "$RUNNER_TEMP/updater.key"
+          {
+            echo "TAURI_SIGNING_PRIVATE_KEY<<__OCEMIND_KEY__"
+            cat "$RUNNER_TEMP/updater.key"
+            echo
+            echo "__OCEMIND_KEY__"
+          } >> "$GITHUB_ENV"
+
       - name: 构建并发布 MSI
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           OCEMIND_UPDATE_TOKEN: ${{ secrets.OCEMIND_UPDATE_TOKEN }}
         with:
@@ -95,11 +110,26 @@ jobs:
         working-directory: desktop
         run: npm ci
 
+      - name: 规范化签名私钥
+        # 从记事本复制过来的密钥每行末尾带 CR，minisign 解不开
+        # （failed to decode secret key: Invalid symbol 13）。这里统一去掉。
+        shell: bash
+        env:
+          RAW_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          key="${RAW_KEY//$'\r'/}"
+          printf '%s' "$key" > "$RUNNER_TEMP/updater.key"
+          {
+            echo "TAURI_SIGNING_PRIVATE_KEY<<__OCEMIND_KEY__"
+            cat "$RUNNER_TEMP/updater.key"
+            echo
+            echo "__OCEMIND_KEY__"
+          } >> "$GITHUB_ENV"
+
       - name: 构建并发布 AppImage
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           OCEMIND_UPDATE_TOKEN: ${{ secrets.OCEMIND_UPDATE_TOKEN }}
         with:
