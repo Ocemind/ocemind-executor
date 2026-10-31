@@ -134,23 +134,20 @@ Windows 安装版和 Linux AppImage 的侧边栏都有「检查更新」：查
 （Windows 走 MSI，Linux 就地替换 AppImage）。便携版、源码运行、deb 装的
 版本都不显示这个入口。
 
-**仓库是私有的**，release 匿名读不到，所以更新请求要带只读令牌：
-构建时把令牌塞进 `OCEMIND_UPDATE_TOKEN` 环境变量，`lib.rs` 里的
-`updater_plugin()` 会给「查更新」和「下载安装包」都加上
-`Authorization: Bearer …`。本地构建前先 `export OCEMIND_UPDATE_TOKEN=$(cat .updater-token)`；
-CI 用 Secrets。令牌只落本机文件（`.updater-token`，已在 .gitignore），
-**不进仓库**。仓库哪天转公开，删掉这个变量即可。
+仓库是**公开**的，release 匿名可读，更新请求不需要任何令牌。
+如果哪天把仓库改回私有，构建时把只读令牌塞进 `OCEMIND_UPDATE_TOKEN`：
+`lib.rs` 的 `updater_plugin()` 会给「查更新」和「下载安装包」都加上
+`Authorization: Bearer …`，本地从 `.updater-token` 读、CI 用 Secrets，
+令牌只落本机文件（已在 .gitignore）。公开仓库下这个变量留空即可。
 
 签名密钥在 `~/.tauri/ocemind-updater.key`（公钥已写进
 `tauri.conf.json`），私钥**不进仓库、务必备份**；丢了就签不出能更新的包。
-打 `v*` 标签由 `.github/workflows/release.yml` 构建并发布，仓库 Secrets 需要
-`TAURI_SIGNING_PRIVATE_KEY`、`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`、
-`OCEMIND_UPDATE_TOKEN`。
+打 `v*` 标签由 `.github/workflows/release.yml` 构建并发布，仓库 Secrets 只需
+`TAURI_SIGNING_PRIVATE_KEY`（这个密钥没设密码，密码项留空即可）。
 
 更新地址写死在 `plugins.updater.endpoints`（`releases/latest/download/latest.json`），
 目前指向 `github.com/Ocemind/ocemind-executor`——仓库改名或换地址要同步改。
-CI 默认发**草稿** release：草稿不会出现在 `releases/latest` 上，所以
-必须手动点发布，客户端才查得到更新。
+标签推送后 CI **直接发布**（`releaseDraft: false`），客户端几秒后就能查到更新。
 MSI 的 `upgradeCode` 固定写在 `tauri.conf.json`（`bundle.windows.wix`），
 **不要改**：换了就等于换了一个产品，更新会装成第二份而不是覆盖。
 

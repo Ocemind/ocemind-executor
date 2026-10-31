@@ -5,8 +5,8 @@ name: release
 # 需要在仓库 Secrets 里配：
 #   TAURI_SIGNING_PRIVATE_KEY          —— ~/.tauri/ocemind-updater.key 的内容
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD —— 生成密钥时设的密码（没设就留空）
-#   OCEMIND_UPDATE_TOKEN               —— 只读 contents 的细粒度令牌，构建时
-#                                         编进安装包，用来读私有仓库的 release
+#   OCEMIND_UPDATE_TOKEN               —— 可选。仓库是公开的就不用配；哪天改回
+#                                         私有，配一个只读 contents 令牌编进包里
 # 私钥不许进仓库，丢了就再也签不出能更新的包。
 
 on:
@@ -55,7 +55,7 @@ jobs:
           projectPath: desktop
           tagName: ${{ github.ref_name }}
           releaseName: "Ocemind 内容执行器 ${{ github.ref_name }}"
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           args: --config src-tauri/tauri.release.windows.conf.json
 
@@ -106,6 +106,6 @@ jobs:
           projectPath: desktop
           tagName: ${{ github.ref_name }}
           releaseName: "Ocemind 内容执行器 ${{ github.ref_name }}"
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           args: --config src-tauri/tauri.release.linux.conf.json
