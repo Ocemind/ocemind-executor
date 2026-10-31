@@ -251,7 +251,12 @@
             </Component>
             {{#each binaries as |bin| ~}}
             <Component Id="{{ bin.id }}" Guid="{{bin.guid}}" Win64="$(var.Win64)">
-                <File Id="Bin_{{ bin.id }}" Source="{{bin.path}}" KeyPath="yes"/>
+                <!-- per-user 安装不能拿文件当 KeyPath，否则 ICE38 校验直接报错：
+                     Component ... installs to user profile. It must use a registry
+                     key under HKCU as its KeyPath, not a file. -->
+                <File Id="Bin_{{ bin.id }}" Source="{{bin.path}}" KeyPath="no"/>
+                <RegistryValue Root="HKCU" Key="Software\{{../manufacturer}}\{{../product_name}}"
+                               Name="Bin{{ bin.id }}" Type="integer" Value="1" KeyPath="yes" />
             </Component>
             {{/each~}}
             {{#if enable_elevated_update_task}}
