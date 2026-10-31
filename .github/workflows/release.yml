@@ -60,6 +60,18 @@ jobs:
             echo "__OCEMIND_KEY__"
           } >> "$GITHUB_ENV"
 
+      - name: 构建（失败时把错误写进注解，便于无日志排障）
+        shell: bash
+        working-directory: desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -o pipefail
+          if ! npm run tauri build -- --config src-tauri/tauri.release.windows.conf.json 2>&1 | tee build.log; then
+            echo "::error title=构建失败::$(tail -c 1200 build.log | tr '\n' ' ' | tr -d '\r')"
+            exit 1
+          fi
+
       - name: 构建并发布 MSI
         uses: tauri-apps/tauri-action@v0
         env:
