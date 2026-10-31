@@ -60,20 +60,6 @@ jobs:
             echo "__OCEMIND_KEY__"
           } >> "$GITHUB_ENV"
 
-      - name: 构建（失败时把错误写进注解，便于无日志排障）
-        shell: bash
-        working-directory: desktop
-        env:
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: |
-          set -o pipefail
-          if ! npm run tauri build -- --config src-tauri/tauri.release.windows.conf.json 2>&1 | tee build.log; then
-            msg=$(grep -i "error" build.log | grep -vi "warning" | tail -8 | tr '\n' ' ' | tr -d '\r')
-            [ -z "$msg" ] && msg=$(tail -c 1500 build.log | tr '\n' ' ' | tr -d '\r')
-            echo "::error title=构建失败::${msg:0:2500}"
-            exit 1
-          fi
-
       - name: 构建并发布 MSI
         uses: tauri-apps/tauri-action@v0
         env:
@@ -153,3 +139,21 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: --config src-tauri/tauri.release.linux.conf.json
+
+  # tauri-action 生成 latest.json 时用 productName 拼文件名去匹配资产，GitHub 会把
+  # 资产名里的空格换成 `.`、删掉中文，导致 Windows 条目被静默丢弃。这里在两边都发完
+  # 之后，按 Release 里的真实资产名重建 latest.json，两个平台都写进去。
+  manifest:
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 重建 latest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python tools/make_latest_json.py "${{ github.ref_name }}"
