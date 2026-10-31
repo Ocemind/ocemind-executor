@@ -97,7 +97,9 @@ python tools/make_portable_desktop.py
 ```
 
 MSI 是**按用户安装**：装到 `%LOCALAPPDATA%\Programs\Ocemind 内容执行器\`，
-不需要管理员权限，卸载走同目录的 `Uninstall ...lnk` 或系统「应用」。
+不需要管理员权限。卸载走安装目录里的 `Uninstall ...lnk`（或
+`msiexec /x {ProductCode}`）——64 位 per-user MSI 不会往
+「设置 → 应用」里写条目，别指望在那里找到它。
 安装包语言固定为 `zh-CN`（`tauri.windows.conf.json` 的
 `bundle.windows.wix.language`）——中文产品名在默认的 en-US / 代码页
 1252 下会直接报 `LGHT0311`，别把它删掉。
@@ -108,7 +110,7 @@ debug 构建的壳默认跑源码（`python run.py`），所以本机装了 MSI 
 便携包也同理：`python tools/make_portable_desktop.py --profile debug`。
 
 Linux 只出 **AppImage**（不出 deb / rpm / Flatpak），在
-`.github/workflows/release.yml` 的 Ubuntu 22.04 job 里构建；想只验证
+`.github/workflows/release.yml` 的 Ubuntu 24.04 job 里构建；想只验证
 构建链路就手动跑 `.github/workflows/desktop.yml`（不打标签）。
 选 AppImage 而不是 deb，是因为 Tauri 的 updater 在 Linux 只能就地替换
 AppImage——deb 装的版本没法自动更新。macOS 暂不做。
@@ -150,6 +152,15 @@ Windows 安装版和 Linux AppImage 的侧边栏都有「检查更新」：查
 标签推送后 CI **直接发布**（`releaseDraft: false`），客户端几秒后就能查到更新。
 MSI 的 `upgradeCode` 固定写在 `tauri.conf.json`（`bundle.windows.wix`），
 **不要改**：换了就等于换了一个产品，更新会装成第二份而不是覆盖。
+
+`latest.json` 由 `release.yml` 的 `manifest` job 生成，不是 tauri-action 写的。
+原因是它拿 `productName` 拼文件名去 Release 里找资产，而 GitHub 会把资产名里
+的空格换成 `.`、删掉中文（`Ocemind 内容执行器_2.3.0_x64_zh-CN.msi` 实际存成
+`Ocemind._2.3.0_x64_zh-CN.msi`），对不上就把 `windows-x86_64` 条目静默丢掉。
+`tools/make_latest_json.py` 改成按接口里的真实资产名生成，`gh release upload`
+上传；两个平台都会写进同一份清单。
+
+本地自检（不需要令牌）：`python tools/make_latest_json.py v2.3.0 out.json`。
 
 ### 桌面快捷方式（源码运行）
 
