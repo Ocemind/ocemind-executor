@@ -124,6 +124,22 @@ def install_vendor(out: Path) -> None:
     subprocess.run(cmd, check=False)
 
 
+def copy_tools(out: Path) -> None:
+    """把 ffmpeg 放进 tools/（toolchain.bundled_dir 就找这儿）。
+
+    不塞进 vendor/：那个目录在 PYTHONPATH 上，多一层 tools 容易和模块名打架。
+    """
+    src = ROOT / "vendor" / "tools"
+    if not src.is_dir():
+        say("没有 vendor/tools（先跑 python tools/fetch_vendor.py），便携版不带 ffmpeg")
+        return
+    dst = out / "tools"
+    if dst.exists():
+        shutil.rmtree(dst)
+    shutil.copytree(src, dst)
+    say(f"复制 {dst.relative_to(out)}/")
+
+
 def write_launchers(out: Path) -> None:
     (out / "启动.bat").write_text(LAUNCHER, encoding="utf-8")
     (out / "ocemind.bat").write_text(CLI_LAUNCHER, encoding="utf-8")
@@ -147,6 +163,7 @@ def main() -> int:
     copy_code(out)
     if not args.skip_vendor:
         install_vendor(out)
+    copy_tools(out)
     write_launchers(out)
 
     print()

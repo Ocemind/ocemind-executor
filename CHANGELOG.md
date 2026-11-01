@@ -7,26 +7,22 @@
 
 ### 新增
 
-- **外部工具自动就位**：启动时先看本机装没装 ffmpeg / yt-dlp（PATH、
-  `C:\ffmpeg\bin`、scoop / chocolatey / winget 的落点），没有才下到
-  `%APPDATA%\ocemind\tools\`，不动系统 PATH，卸载删数据目录即可。下载
-  一律校验 SHA-256，关掉用设置里的开关或 `OCEMIND_NO_TOOL_DOWNLOAD=1`
-- **Gitee 镜像**：设置 → 外部工具可填镜像地址，客户端先取
-  `<镜像>/index.json`，拿不到再回落 GitHub。`tools/sync_tools_mirror.py`
-  从 GitHub Release 生成要传 Gitee 的目录（含版本、大小、校验值）
-- **`POST /api/tools/ensure`**：下载失败后的手动重试入口，界面上是
-  「下载缺失工具」按钮；侧边栏直接显示下载百分比
+- **ffmpeg / yt-dlp 随软件分发**：装到别人电脑上不用再要求对方自己装。
+  yt-dlp 作为 Python 包编进 sidecar，由 sidecar 自己的解释器跑
+  （`--run-ytdlp`）——`pip` 生成的 `yt-dlp.exe` 没有签名，会被智能应用
+  控制拦掉；ffmpeg 用共享版，作为 Tauri 资源装到程序目录的 `tools/` 下，
+  不塞进 sidecar（塞进去 onefile 每次启动都要解包 150 MB，README 有实测）
 
 ### 变更
 
-- **`.gitignore` 跟上改名**：`_explore/site-js/`，不再把抓来的站点脚本
-  误提交进仓库
-- 应用图标换成新图（16–512，含多尺寸 ICO）
+- **本机已有的优先用本机的**：设置里填的路径 → PATH / scoop / chocolatey /
+  winget / `C:\ffmpeg\bin` → 包里自带的。侧边栏会标出当前用的是哪一个
+- 新增 `tools/fetch_vendor.py`：打包前把 ffmpeg 下到 `vendor/`（只做一次，
+  产物已忽略），spec 找不到就跳过、不中断打包
 
-### 移除
+### 修复
 
-- **所有旧品牌兼容代码**：数据目录迁移、`.tdmpart` / `.ytdl` 旧后缀、
-  TDM Lite 配置迁移、旧快捷方式清理。现在没有老用户，留着只是负担
+- Linux / AppImage 上 ffmpeg 一律显示「不可用」：可执行文件名原来写死了 `.exe`
 
 ## [2.3.2] - 2026-11-01
 

@@ -104,20 +104,18 @@ def reset_ffmpeg_cache():
 
 
 def find_ffmpeg(explicit=None):
-    """优先显式路径，其次自己托管的那个，再 PATH，最后常见安装位置。
+    """优先显式路径，其次本机装的，最后包里自带的。
 
-    托管目录（`tools/ffmpeg/`）排在 PATH 前面：那是应用按需下下来的最新版，
-    比机器上三年前装的更可能是能用的那个。都找不到就退回 'ffmpeg' 让
-    ffmpeg 自己报错（返回 None 会让调用方更早炸，但错误信息更难懂）。
+    都找不到就退回 'ffmpeg' 让 ffmpeg 自己报错（返回 None 会让调用方更早炸，
+    但错误信息更难懂）。
     """
     if explicit:
         return explicit
     if _FFMPEG_CACHE:
         return _FFMPEG_CACHE[0]
-    from .toolchain import managed_path
+    from .toolchain import ffmpeg_exe
 
-    managed = managed_path("ffmpeg")
-    cand = str(managed) if managed else shutil.which("ffmpeg")
+    cand = ffmpeg_exe()
     if not cand:
         pats = [r"D:\Program Files\ffmpeg*\bin\ffmpeg.exe",
                 r"C:\Program Files\ffmpeg*\bin\ffmpeg.exe",

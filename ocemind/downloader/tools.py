@@ -1,11 +1,10 @@
 """外部工具定位：yt-dlp / ffmpeg。"""
 from __future__ import annotations
 
-import importlib.util
-import shutil
 import subprocess
-import sys
 from pathlib import Path
+
+from ocemind import toolchain
 
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -13,29 +12,12 @@ CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 def find_ytdlp(explicit: str = "") -> list[str]:
     """返回可直接拼接参数的命令前缀。
 
-    优先 `python -m yt_dlp`：`pip install yt-dlp` 生成的 `yt-dlp.exe` 是重新
-    链接出来的、没有签名，在这台机器上会被智能应用控制直接拦掉；python.exe
-    是签过名的，跑模块没事。设置里显式填了路径的仍以它为准。
+    本机装了（PATH 上有 `yt-dlp`）就用它；没装就用编进包里的那份，由
+    sidecar 自己的解释器跑（`-m yt_dlp` / `--run-ytdlp`）——`pip install
+    yt-dlp` 生成的 `yt-dlp.exe` 是没有签名的，会被智能应用控制拦掉，
+    走 python 解释器没事。
     """
-    if explicit and Path(explicit).exists():
-        return [explicit]
-    from ocemind import toolchain
-
-    if toolchain.managed_path("ytdlp"):
-        return toolchain.ytdlp_command()
-    if getattr(sys, "frozen", False):
-        # 冻结环境里没有独立 python，`-m yt_dlp` 跑不通；交给
-        # --run-ytdlp，没装时它自己会明确说「还未安装」
-        return toolchain.ytdlp_command()
-    if importlib.util.find_spec("yt_dlp") is not None:
-        return [sys.executable, "-m", "yt_dlp"]
-    exe = shutil.which("yt-dlp")
-    if exe:
-        return [exe]
-    scripts = Path(sys.executable).parent / "Scripts" / "yt-dlp.exe"
-    if scripts.exists():
-        return [str(scripts)]
-    return [sys.executable, "-m", "yt_dlp"]
+    return toolchain.ytdlp_command(explicit)
 
 
 def find_ffmpeg(explicit: str = "") -> str:
@@ -46,27 +28,16 @@ def find_ffmpeg(explicit: str = "") -> str:
             return str(p.parent)
         if p.is_dir():
             return str(p)
-    from ocemind import toolchain
-
-    managed = toolchain.managed_path("ffmpeg")
-    if managed:
-        return str(Path(managed).parent)
-    exe = toolchain.system_path("ffmpeg") or shutil.which("ffmpeg")
-    if exe:
-        return str(Path(exe).parent)
-    for base in (r"D:\Program Files", r"C:\Program Files", r"D:\Program Files (x86)"):
-        root = Path(base)
-        if not root.exists():
-            continue
-        for p in root.glob("ffmpeg*/bin/ffmpeg.exe"):
-            return str(p.parent)
-    return ""
+    exe = toolchain.ffmpeg_exe()
+    return str(Path(exe).parent) if exe else ""
 
 
 def tool_versions(ytdlp_path: str = "", ffmpeg_path: str = "") -> dict:
-    versions = {"ytdlp": "", "ffmpeg": "", "ytdlp_cmd": "", "ffmpeg_dir": ""}
+    versions = {"ytdlp": "", "ffmpeg": "", "ytdlp_cmd": "", "ffmpeg_dir": "",
+                "ytdlp_source": "", "ffmpeg_source": ""}
     cmd = find_ytdlp(ytdlp_path)
     versions["ytdlp_cmd"] = " ".join(cmd)
+    versions["ytdlp_source"] = toolchain.resolve("ytdlp", ytdlp_path)["source"]
     try:
         out = subprocess.run(
             cmd + ["--version"],
@@ -76,14 +47,13 @@ def tool_versions(ytdlp_path: str = "", ffmpeg_path: str = "") -> dict:
     except Exception as exc:  # noqa: BLE001
         versions["ytdlp"] = f"不可用: {exc}"
 
-    ffdir = find_ffmpeg(ffmpeg_path)
-    versions["ffmpeg_dir"] = ffdir
-    if ffdir:
-        # Linux 的 ffmpeg 没有 .exe 后缀，写死 exe 会让 AppImage 上一律显示「不可用」
-        exe = Path(ffdir) / ("ffmpeg.exe" if sys.platform == "win32" else "ffmpeg")
+    found = toolchain.resolve("ffmpeg", ffmpeg_path)
+    versions["ffmpeg_source"] = found["source"]
+    versions["ffmpeg_dir"] = str(Path(found["path"]).parent) if found["path"] else ""
+    if found["path"]:
         try:
             out = subprocess.run(
-                [str(exe), "-version"],
+                [found["path"], "-version"],
                 capture_output=True, text=True, timeout=20, creationflags=CREATE_NO_WINDOW,
             )
             first = (out.stdout or "").splitlines()[0]

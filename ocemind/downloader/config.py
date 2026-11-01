@@ -40,9 +40,6 @@ DEFAULT_SETTINGS = {
     "proxyPass": "",
     "ytdlpPath": "",
     "ffmpegPath": "",
-    # 外部工具托管：启动时检测本机，缺的从镜像（留空走 GitHub）下到数据目录
-    "autoDownloadTools": True,
-    "toolsMirror": "",
     "autoLaunch": False,
     # 课程平台课程
     "courseWorkers": 24,

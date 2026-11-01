@@ -45,9 +45,9 @@ desktop/src-tauri/gen/
 # sidecar 是 PyInstaller 产物，由 tools/build_sidecar.py 生成
 desktop/src-tauri/binaries/
 
-# ---------------------------------------------------------------- 工具镜像
-# tools/sync_tools_mirror.py 的输出（几十上百 MB 的二进制），只上传到 Gitee
-mirror/
+# ---------------------------------------------------------------- 随包分发的工具
+# tools/fetch_vendor.py 下到这里的 ffmpeg（七八十 MB），打包时才用
+vendor/
 
 # ---------------------------------------------------------------- OS / 编辑器
 Thumbs.db

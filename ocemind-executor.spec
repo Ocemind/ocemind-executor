@@ -12,14 +12,8 @@
      而且 exe 本来就不支持自动登录（见 README）
 """
 
-import os
-import sys
-
-sys.path.insert(0, os.path.dirname(SPECPATH))
-# yt-dlp 运行时下载、不打进包，但它用到的标准库模块得补上
-# （见 tools/ytdlp_stdlib.py）
-from tools.ytdlp_stdlib import ytdlp_stdlib_imports  # noqa: E402
-
+# ffmpeg 不放进 onefile 的 exe（每次启动都要解包一遍，太慢）：打完后把
+# vendor/tools/ffmpeg 拷到 exe 旁边的 tools/ 里，toolchain 会去那儿找。
 a = Analysis(
     ['run.py'],
     pathex=['.'],
@@ -27,7 +21,9 @@ a = Analysis(
     datas=[],
     # core.py 里是模块级 `from ocemind import crypto`，静态分析本来就能找到；
     # 这里再写一遍是保险——它曾经被包在 try/except 里静默 import。
-    hiddenimports=['ocemind.crypto'] + ytdlp_stdlib_imports(),
+    # yt_dlp 是 toolchain.run_ytdlp 里函数级 import 进来的，静态分析能找到；
+    # 写一遍同样是保险。
+    hiddenimports=['ocemind.crypto', 'yt_dlp'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -37,8 +33,6 @@ a = Analysis(
         'PyQt5', 'PySide2', 'IPython', 'pytest',
         # 自动登录相关：exe 不带，走手动导入 cookies
         'playwright', 'greenlet', 'pyee',
-        # yt-dlp 走「首次运行按需下载」，不打进包（见 ocemind/toolchain.py）
-        'yt_dlp',
     ],
     noarchive=False,
     optimize=0,

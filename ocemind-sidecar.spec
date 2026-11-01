@@ -12,23 +12,20 @@
   * 不排除 Pillow：图像处理（image.edit）是注册过的能力，不能装完才发现缺。
 """
 
-import os
-import sys
-
-sys.path.insert(0, os.path.dirname(SPECPATH))
-# yt-dlp 运行时下载、不打进包，但它用到的标准库模块得补上，否则冻结进程里
-# `import yt_dlp` 会报 No module named 'optparse'（见 tools/ytdlp_stdlib.py）
-from tools.ytdlp_stdlib import ytdlp_stdlib_imports  # noqa: E402
+# ffmpeg（153 MB）不放进 sidecar：onefile 每次启动都要把它解包一遍，实测
+# 启动从 1 秒变成 7 秒。它由 Tauri 的 bundle.resources 拷到程序目录下的
+# tools/，见 desktop/src-tauri/tauri.conf.json。
+_datas = [
+    ('ocemind/web', 'ocemind/web'),
+    ('ocemind/executor/standards.json', 'ocemind/executor'),
+]
 
 a = Analysis(
     ['run.py'],
     pathex=['.'],
     binaries=[],
-    datas=[
-        ('ocemind/web', 'ocemind/web'),
-        ('ocemind/executor/standards.json', 'ocemind/executor'),
-    ],
-    hiddenimports=['ocemind.crypto'] + ytdlp_stdlib_imports(),
+    datas=_datas,
+    hiddenimports=['ocemind.crypto', 'yt_dlp'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -44,10 +41,6 @@ a = Analysis(
         'cv2', 'paddle', 'paddleocr', 'paddlex',
         'torch', 'tensorflow', 'onnxruntime', 'rapidocr_onnxruntime',
         'faster_whisper', 'whisper', 'pyclipper', 'shapely', 'lmdb', 'skimage',
-        # yt-dlp 由「首次运行按需下载」提供（ocemind/toolchain.py），
-        # 绝不能跟着构建机的 pip 环境打进来：那样包里多 6 MB、版本被
-        # 冻结在发版那天，下载来的新版本反而永远用不上。
-        'yt_dlp',
     ],
     noarchive=False,
     optimize=0,

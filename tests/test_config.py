@@ -6,6 +6,7 @@
 之后每次保存设置都同步回去，两边看到的是同一个「默认保存目录」。
 """
 import json
+from pathlib import Path
 
 from ocemind import paths
 from ocemind.downloader.config import DEFAULT_SETTINGS, Config
@@ -90,13 +91,16 @@ def test_changing_ffmpeg_path_resets_cache(tmp_path, monkeypatch):
 
 
 def test_reset_ffmpeg_cache_forces_rediscovery(monkeypatch):
+    # toolchain 会把 which() 的结果规整成 Path，比较前统一一下分隔符
+    a = str(Path("C:/a/ffmpeg.exe"))
+    b = str(Path("C:/b/ffmpeg.exe"))
     monkeypatch.setattr(paths, "_FFMPEG_CACHE", [])
     monkeypatch.setattr(paths.shutil, "which", lambda name: "C:/a/ffmpeg.exe")
-    assert paths.find_ffmpeg() == "C:/a/ffmpeg.exe"
+    assert paths.find_ffmpeg() == a
     monkeypatch.setattr(paths.shutil, "which", lambda name: "C:/b/ffmpeg.exe")
-    assert paths.find_ffmpeg() == "C:/a/ffmpeg.exe"   # 命中缓存
+    assert paths.find_ffmpeg() == a   # 命中缓存
     paths.reset_ffmpeg_cache()
-    assert paths.find_ffmpeg() == "C:/b/ffmpeg.exe"
+    assert paths.find_ffmpeg() == b
 
 
 def test_app_dir_env_override(monkeypatch, tmp_path):

@@ -71,43 +71,22 @@ python run.py --serve --port 8765   # 只起本地服务（Tauri 壳 / 远程调
 pip install -r requirements.txt
 ```
 
-### 装到别人电脑上要准备什么
+`ffmpeg` 和 `yt-dlp` 随软件打包，装到别人电脑上不用再单独装。但**本机已经
+有的优先用本机的**：启动时先看设置里填的路径、再看 PATH 和常见安装目录
+（scoop / chocolatey / winget / `C:\ffmpeg\bin`），都没有才用包里那份。
+侧边栏会标出当前用的是哪个（`本机` / `自带`）。
 
-| 组件 | 安装版（MSI / AppImage） | 源码运行 |
-|------|------------------------|---------|
-| Python | **自带**，不用装 | 需要 3.10+，`pip install -r requirements.txt` |
-| ffmpeg | **自动**：先找本机，没有就下到 `%APPDATA%\ocemind\tools\` | 同上，也可以自己装进 PATH |
-| yt-dlp | **自动**：同上，存成 zipapp 由 sidecar 的解释器加载 | 同上（`pip install yt-dlp` 也行） |
-| Chrome | 抖音下载、账号登录、发布需要**本机已装 Chrome** | 同左 |
-| 转写 / OCR 引擎 | 用到时在「模型与接口」里一键装 | 同左 |
-
-自动下载只看两件事：**本机有没有**（PATH、`C:\ffmpeg\bin`、scoop /
-chocolatey / winget 的落点），以及**托管目录里有没有**。两者都没有才下载，
-下载文件一律校验 SHA-256，不写系统 PATH，卸载软件时删数据目录即可。
-关掉它：设置里取消「启动时自动下载」，或设环境变量
-`OCEMIND_NO_TOOL_DOWNLOAD=1`。
-
-GitHub 在国内不一定连得上，所以客户端**优先读 Gitee 上的一份拷贝**：
-设置 → 外部工具里的「工具镜像」填 `https://gitee.com/你/ocemind-tools/raw/master`，
-客户端先取 `<镜像>/index.json`，取不到再回落 GitHub。
-
-Gitee 那份是用脚本生成的，传上去一次就行：
+打包前要先把 ffmpeg 下到 `vendor/`（只需一次，`.gitignore` 已忽略）：
 
 ```bash
-# 从 GitHub Release 拉最新版，算 SHA-256，产出 index.json + 文件
-python tools/sync_tools_mirror.py --out ./mirror
-# 传完后打印该填进设置的地址
-python tools/sync_tools_mirror.py --out ./mirror --gitee 你/ocemind-tools
-# 发布前自检：按清单重新校验每个文件
-python tools/sync_tools_mirror.py --out ./mirror --verify
+python tools/fetch_vendor.py     # 共享版，约 153 MB
+pip install yt-dlp               # 会被编进 sidecar
+python tools/build_sidecar.py
 ```
 
-Windows 用 ffmpeg 的**共享版**（78 MB）：静态版 167 MB，超过 Gitee 单文件
-上限，传不上去。上游更新后重跑一次第 1 条命令，把变动的文件覆盖上去即可。
-以后要再接别的开源工具，在 `ocemind/toolchain.py` 里加一条
-`FALLBACK_URLS`，脚本里加一条资产名。
-
-完整步骤见 [docs/tools-mirror.md](docs/tools-mirror.md)。
+ffmpeg 不编进 sidecar：onefile 每次启动都要把整包解压一遍，实测把它塞进去
+启动从 1 秒变成 7 秒。它作为 Tauri 资源（`bundle.resources`）拷到程序目录的
+`tools/` 下，sidecar 从自己旁边找。便携版同理，`make_portable.py` 会复制过去。
 
 ### Tauri 桌面壳
 
@@ -164,7 +143,7 @@ AppImage——deb 装的是只读副本，没有应用内自更新入口。
 
 AppImage 是单文件，双击即跑，用户数据放在 `~/.local/share/ocemind`。
 Ubuntu 24.04 默认没有 FUSE2，跑之前要 `sudo apt install libfuse2t64`，
-或者用 `./ocemind_2.3.3_amd64.AppImage --appimage-extract-and-run`。
+或者用 `./ocemind_2.3.1_amd64.AppImage --appimage-extract-and-run`。
 
 ### 自动更新
 
@@ -481,3 +460,14 @@ python -m pytest -q          # 离线，秒级；当前 330 passed, 1 skipped
 - [docs/scope-v2.md](docs/scope-v2.md) — 能力范围收敛时的判定（历史方案稿）
 - [docs/ocemind-integration.md](docs/ocemind-integration.md) — 整合方案的技术梳理（历史方案稿）
 - [CHANGELOG.md](CHANGELOG.md)
+
+---
+
+## 11. 随包分发的第三方组件
+
+| 组件 | 许可 | 说明 |
+|---|---|---|
+| [FFmpeg](https://ffmpeg.org/) | LGPL-2.1（shared 构建） | 以动态库形式随包分发，未改动源码；许可证全文见上游 |
+| [yt-dlp](https://github.com/yt-dlp/yt-dlp) | Unlicense | 作为 Python 包编进 sidecar |
+
+两者都从各自官方 Release 获取，没有打补丁。

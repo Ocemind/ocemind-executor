@@ -7,13 +7,11 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
-import sys
 import subprocess
 import threading
 from pathlib import Path
 
-from ocemind import douyin
+from ocemind import douyin, toolchain
 from ocemind.links import first_url
 
 from .base import Engine, cancelled, fail, ok
@@ -27,18 +25,7 @@ DEFAULT_HEIGHTS = [2160, 1440, 1080, 720, 480, 360]
 
 
 def _ytdlp_cmd(cfg) -> list[str]:
-    configured = (cfg.get("ytdlpPath") or "").strip()
-    if configured and Path(configured).exists():
-        return [configured]
-    from ocemind import toolchain
-
-    if toolchain.managed_path("ytdlp") or getattr(sys, "frozen", False):
-        # 冻结环境没有独立 python，-m / python3 都跑不起来
-        return toolchain.ytdlp_command()
-    found = shutil.which("yt-dlp")
-    if found:
-        return [found]
-    return ["python3", "-m", "yt_dlp"]
+    return toolchain.ytdlp_command((cfg.get("ytdlpPath") or "").strip())
 
 
 def _base_cmd(cfg, *, need_ffmpeg: bool = False) -> list[str]:
