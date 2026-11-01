@@ -1,0 +1,45 @@
+name: fix-releases
+
+# 一次性修复：v1.0.0 和 ci-debug 的 Release 是手工预建的（零资产），
+# tauri-action 找不到可接管的 Release 就会去 POST /releases，被 403 挡回来。
+# 这里把这两个空 Release 删掉，保留 tag；v1.0.0 的 tag 由本机重新推一次，
+# 让 tauri-action 自己建 Release。跑完打一个 fix-releases-done 标签当信号，
+# 本机轮询 git ls-remote 就能知道什么时候可以重推。
+
+on:
+  push:
+    tags: ["fix-releases"]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 删掉空的 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for tag in v1.0.0 ci-debug; do
+            echo "== $tag"
+            gh release view "$tag" --json tagName,isDraft,isPrerelease,assets 2>&1 || true
+            gh release delete "$tag" --yes 2>&1 || true
+          done
+          gh release list --limit 10
+
+      - name: 清掉排障用的标签
+        run: |
+          git push origin --delete ci-debug || true
+          git push origin --delete fix-releases || true
+
+      - name: 打完成信号
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git tag -f fix-releases-done
+          git push -f origin refs/tags/fix-releases-done
