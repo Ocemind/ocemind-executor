@@ -1,0 +1,38 @@
+name: prune-old-releases
+
+# 一次性清理：删掉 1.1.0 之前发过的全部 Release 和对应的 git tag。
+# 本机没有 GitHub 凭据，只能用仓库自带的 GITHUB_TOKEN 做，所以做成工作流，
+# 由 `prune-old-releases` 这个标签触发。跑完会把这个标签自己删掉，
+# 之后再把这个文件删掉，历史里不留活口。
+
+on:
+  push:
+    tags: ["prune-old-releases"]
+
+permissions:
+  contents: write
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 删除旧 Release 与 tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -x
+          for tag in v2.3.0 v2.3.1 v2.3.2 v2.4.0; do
+            gh release delete "$tag" --yes --cleanup-tag || true
+            git push origin --delete "$tag" || true
+          done
+          echo "--- 剩下的 Release ---"
+          gh release list
+          echo "--- 剩下的 tag ---"
+          git ls-remote --tags origin
+
+      - name: 删掉触发用的标签
+        run: git push origin --delete prune-old-releases || true
