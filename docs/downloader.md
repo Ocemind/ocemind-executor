@@ -23,7 +23,8 @@
 - 课程任务显示分片进度（`231/796 片`），普通下载显示速度和剩余时间
 - 平台视频会自动选择最佳音视频并合并
 - 保存目录会记住上次用的
-- 需要 `ffmpeg`（已在系统 PATH 上）；找不到会去常见安装位置兜底找
+- `ffmpeg` 本机装了就用本机的（PATH、scoop / chocolatey / winget、
+  `C:\ffmpeg\bin`），没有就用程序目录 `tools/` 里自带的那份
 - 所有数据在一个目录：`%APPDATA%\ocemind\`
   （`settings.json` 设置、`tasks.json` 任务列表、`cookies.txt` 登录态、`app.log`）
 
