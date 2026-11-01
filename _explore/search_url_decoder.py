@@ -4,7 +4,7 @@ import glob
 import os
 import re
 
-DIR = r"D:\视频\xiaoe-js"
+DIR = r"D:\视频\site-js"
 
 PATTERNS = [
     r"replace\(/\s*[@#\$%_]\s*/g",

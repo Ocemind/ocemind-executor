@@ -109,7 +109,7 @@ class Harness:
     def __init__(self):
         self.home = tempfile.mkdtemp(prefix="ocemind_e2e_home_")
         self.out = tempfile.mkdtemp(prefix="ocemind_e2e_out_")
-        os.environ["XIAOE_DL_HOME"] = self.home
+        os.environ["OCEMIND_HOME"] = self.home
         self.www_port = free_port()
         self.www = QuietServer(("127.0.0.1", self.www_port), Handler)
         threading.Thread(target=self.www.serve_forever, daemon=True).start()
@@ -120,9 +120,9 @@ class Harness:
     def start(self):
         import uvicorn
 
-        from xiaoe_dl.downloader.api import create_app
-        from xiaoe_dl.downloader.config import Config
-        from xiaoe_dl.downloader.manager import TaskManager
+        from ocemind.downloader.api import create_app
+        from ocemind.downloader.config import Config
+        from ocemind.downloader.manager import TaskManager
 
         cfg = Config(home=self.home)
         cfg.update({"defaultDir": self.out})
@@ -238,8 +238,8 @@ def main():
 
     # 4. 同一门课重复排队必须被拦；换目录可以并存
     # 这里用不启动调度线程的 manager，免得真去连课程平台（本脚本要求不依赖外网）
-    from xiaoe_dl.downloader.config import Config
-    from xiaoe_dl.downloader.manager import TaskManager
+    from ocemind.downloader.config import Config
+    from ocemind.downloader.manager import TaskManager
 
     guard = TaskManager(Config(home=tempfile.mkdtemp(prefix="ocemind_e2e_guard_")),
                         start_scheduler=False)

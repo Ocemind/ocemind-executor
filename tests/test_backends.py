@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from xiaoe_dl.downloader.config import Config
-from xiaoe_dl.downloader.manager import TaskManager
-from xiaoe_dl.executor import backends
+from ocemind.downloader.config import Config
+from ocemind.downloader.manager import TaskManager
+from ocemind.executor import backends
 
 
 @pytest.fixture()
@@ -115,7 +115,7 @@ def test_local_run_skips_budget_gate(cfg, engines):
     backends.set_choice(cfg, "transcribe.asr", {"backend": "local"})
     manager = TaskManager(cfg, start_scheduler=False)
     try:
-        from xiaoe_dl.executor.store import Store
+        from ocemind.executor.store import Store
         manager.store = Store(Path(cfg.home) / "executor.db")
         manager.store.add_usage("siliconflow", "transcribe.asr", 10, 5.0)
         assert manager._budget_block("transcribe.asr") == ""

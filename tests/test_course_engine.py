@@ -8,10 +8,10 @@ import threading
 
 import pytest
 
-from xiaoe_dl import auth
-from xiaoe_dl.downloader import course_engine
-from xiaoe_dl.downloader.config import Config
-from xiaoe_dl.downloader.course_engine import CourseDownloader, tmp_dir_for
+from ocemind import auth
+from ocemind.downloader import course_engine
+from ocemind.downloader.config import Config
+from ocemind.downloader.course_engine import CourseDownloader, tmp_dir_for
 
 URL = "https://app1.h5.xiaoeknow.com/p/course/video/l_abcdef1234567890abcd"
 ALIVE = "l_abcdef1234567890abcd"

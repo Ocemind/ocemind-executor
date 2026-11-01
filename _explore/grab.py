@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-小鹅通课程真实 m3u8 抓取 —— Phase 1（cookie 注入版）
+课程平台课程真实 m3u8 抓取 —— Phase 1（cookie 注入版）
 
 为什么不用 --cookies-from-browser / 复制 Profile / CDP 连默认目录：
   - Chrome 127+ 的 App-Bound Encryption 使 cookie 解密密钥绑定 profile 原始路径，
     复制 profile 到别处 -> cookie 全部解不出来（实测只剩 3 条）。
   - Chrome 136+ 禁止在默认 User Data 目录上开 --remote-debugging-port，
-    而专用小鹅通 profile 就在默认目录，CDP 连不上。
+    而专用课程平台 profile 就在默认目录，CDP 连不上。
 
 本方案：读取你已经用插件导出的、已验证可用的 cookies.txt，
         用 Playwright 注入到抓包浏览器 -> 等价于已登录 -> 监听真实 m3u8。
@@ -216,7 +216,7 @@ async def main(args) -> None:
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(description="小鹅通真实 m3u8 抓取（cookie 注入）")
+    ap = argparse.ArgumentParser(description="课程平台真实 m3u8 抓取（cookie 注入）")
     ap.add_argument("--url", required=True)
     ap.add_argument("--wait", type=int, default=40, help="点播放后的监听秒数")
     ap.add_argument("--cookies", default=r"D:\视频\cookies.txt",

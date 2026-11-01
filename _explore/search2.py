@@ -4,7 +4,7 @@ import glob
 import os
 import re
 
-DIR = r"D:\视频\xiaoe-js"
+DIR = r"D:\视频\site-js"
 KEYS = ["line_sharpness", "lineSharpness", "material_id", "keyframe_id",
         "is_pri_support", "get_lookback_list", "lookback_list"]
 

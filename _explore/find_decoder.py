@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-抓取小鹅通播放器 JS，定位 [xiaoe] 混淆播放列表的解码逻辑。
+抓取课程平台播放器 JS，定位 [xiaoe] 混淆播放列表的解码逻辑。
 
 思路：confusion_index 返回的 body 以 '[xiaoe]' 开头且是密文，
       解码函数一定在播放器 JS 里。把页面加载的所有 JS 保存下来，
@@ -20,7 +20,7 @@ try:
 except Exception:
     pass
 
-OUTDIR = r"D:\视频\xiaoe-js"
+OUTDIR = r"D:\视频\site-js"
 KEYS = ["[xiaoe]", "xiaoe]", "confusion", "atob", "decrypt",
         "CryptoJS", "AES", "unescape", "decodeURIComponent"]
 

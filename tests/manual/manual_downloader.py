@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from xiaoe_dl.downloader.http_downloader import SegmentedDownload  # noqa: E402
+from ocemind.downloader.http_downloader import SegmentedDownload  # noqa: E402
 
 URL = "https://registry.npmmirror.com/-/binary/node/v20.11.0/node-v20.11.0-win-x64.zip"
 SIZE = 29701389
@@ -24,7 +24,7 @@ def md5(path: Path) -> str:
 
 
 def main() -> int:
-    tmp = Path(tempfile.mkdtemp(prefix="tdmlite-test-"))
+    tmp = Path(tempfile.mkdtemp(prefix="ocemind-test-"))
     print("tmp:", tmp)
 
     t0 = time.time()
@@ -43,7 +43,7 @@ def main() -> int:
 
     # ---- 暂停 → 续传 ----
     dest = tmp / "paused.zip"
-    sidecar = tmp / "paused.zip.tdmlite.json"
+    sidecar = tmp / "paused.zip.ocemind.json"
     dl = SegmentedDownload(URL, dest, connections=4)
     th = threading.Thread(target=dl.run, daemon=True)
     th.start()

@@ -34,8 +34,8 @@ HOOK_JS = r"""
   const store = (s) => {
     try {
       if (typeof s === 'string' && hasTag(s)) {
-        if (!window.__xiaoe_pl || s.length > window.__xiaoe_pl.length) {
-          window.__xiaoe_pl = s;
+        if (!window.__ocemind_pl || s.length > window.__ocemind_pl.length) {
+          window.__ocemind_pl = s;
         }
       }
     } catch (e) {}
@@ -131,7 +131,7 @@ async def main(args):
         print(f"[wait] {args.wait} 秒 —— 若未自动播放请在浏览器里手动点播放")
         await asyncio.sleep(args.wait)
 
-        pl = await page.evaluate("() => window.__xiaoe_pl || null")
+        pl = await page.evaluate("() => window.__ocemind_pl || null")
         if pl:
             print("\n" + "=" * 70)
             print(f"✅ 捕获到明文播放列表：{len(pl)} 字符")

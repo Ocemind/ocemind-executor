@@ -13,14 +13,14 @@ from pathlib import Path
 
 import pytest
 
-from xiaoe_dl.downloader.config import Config
-from xiaoe_dl.downloader.manager import TaskManager
-from xiaoe_dl.executor.engines import registry
-from xiaoe_dl.executor.engines.engine_map import ENGINES, verify_answer
-from xiaoe_dl.executor.facade import Executor, make_idem
-from xiaoe_dl.executor.publish import standards
-from xiaoe_dl.executor.publish.engine import snapshot_hash
-from xiaoe_dl.executor.store import Store
+from ocemind.downloader.config import Config
+from ocemind.downloader.manager import TaskManager
+from ocemind.executor.engines import registry
+from ocemind.executor.engines.engine_map import ENGINES, verify_answer
+from ocemind.executor.facade import Executor, make_idem
+from ocemind.executor.publish import standards
+from ocemind.executor.publish.engine import snapshot_hash
+from ocemind.executor.store import Store
 
 
 @pytest.fixture()

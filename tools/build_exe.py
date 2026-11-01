@@ -18,7 +18,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from xiaoe_dl.paths import desktop_dir  # noqa: E402
+from ocemind.paths import desktop_dir  # noqa: E402
 
 SPEC = os.path.join(ROOT, "ocemind-executor.spec")
 EXE_NAME = "Ocemind 内容执行器.exe"

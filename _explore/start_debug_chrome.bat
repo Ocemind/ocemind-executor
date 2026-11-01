@@ -1,10 +1,10 @@
 @echo off
-REM 以调试模式启动「专用小鹅通 Chrome」(Profile 2)。
+REM 以调试模式启动「专用课程平台 Chrome」(Profile 2)。
 REM 前提：先把这个 Chrome 完全关闭（Chrome 单例，不关掉端口不会生效）。
 REM 启动后不要关这个窗口，回到抓取脚本运行 grab.py 即可。
 
 set CHROME="C:\Program Files\Google\Chrome\Application\chrome.exe"
-set UDD=C:\Users\TimiHub\AppData\Local\Google\Chrome\User Data
+set UDD=%LOCALAPPDATA%\Google\Chrome\User Data
 
 echo [1/2] 检查是否有残留 Chrome 进程...
 tasklist /FI "IMAGENAME eq chrome.exe" 2>nul | find /I "chrome.exe" >nul

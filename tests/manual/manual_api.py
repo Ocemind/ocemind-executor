@@ -7,20 +7,20 @@ import threading
 import time
 from pathlib import Path
 
-HOME = Path(tempfile.mkdtemp(prefix="tdmlite-home-"))
-os.environ["XIAOE_DL_HOME"] = str(HOME)
+HOME = Path(tempfile.mkdtemp(prefix="ocemind-home-"))
+os.environ["OCEMIND_HOME"] = str(HOME)
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import requests  # noqa: E402
 import uvicorn  # noqa: E402
 
-from xiaoe_dl.downloader.api import create_app  # noqa: E402
-from xiaoe_dl.downloader.config import Config  # noqa: E402
-from xiaoe_dl.downloader.manager import TaskManager  # noqa: E402
+from ocemind.downloader.api import create_app  # noqa: E402
+from ocemind.downloader.config import Config  # noqa: E402
+from ocemind.downloader.manager import TaskManager  # noqa: E402
 
 FILE_URL = "https://registry.npmmirror.com/-/binary/node/v20.11.0/node-v20.11.0-win-x64.zip"
 VIDEO_URL = "https://www.w3schools.com/html/mov_bbb.mp4"
-OUT = Path(tempfile.mkdtemp(prefix="tdmlite-out-"))
+OUT = Path(tempfile.mkdtemp(prefix="ocemind-out-"))
 
 
 def free_port():

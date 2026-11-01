@@ -9,7 +9,7 @@ import json
 import re
 from pathlib import Path
 
-from xiaoe_dl import __version__, paths
+from ocemind import __version__, paths
 
 ROOT = Path(paths.project_root())
 

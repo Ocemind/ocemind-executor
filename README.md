@@ -76,7 +76,7 @@ pip install -r requirements.txt
 ### Tauri 桌面壳
 
 `desktop/` 是正式的分发壳：Rust + Tauri 2，窗口里加载的还是
-`xiaoe_dl/web` 这一套界面，背后的 Python 内核以 sidecar 方式跑。
+`ocemind/web` 这一套界面，背后的 Python 内核以 sidecar 方式跑。
 壳层负责挑空闲端口、拉起 `run.py --serve`（发布版是冻结的
 `ocemind-sidecar.exe`）、探活后才出窗口，退出时先请求 `/api/shutdown`
 再用 Job Object 收掉整棵进程树。
@@ -280,7 +280,7 @@ python tools/make_portable.py --out D:\Ocemind
 
 ## 4. Agent 接入
 
-三个入口**共用同一个内核**（`xiaoe_dl/executor/facade.py`），
+三个入口**共用同一个内核**（`ocemind/executor/facade.py`），
 所以不存在「界面能做的事 CLI 做不了」。
 
 ### MCP
@@ -290,7 +290,7 @@ python tools/make_portable.py --out D:\Ocemind
   "mcpServers": {
     "ocemind": {
       "command": "python",
-      "args": ["-m", "xiaoe_dl.executor.mcp"],
+      "args": ["-m", "ocemind.executor.mcp"],
       "env": {"OCEMIND_URL": "http://127.0.0.1:8765", "OCEMIND_TOKEN": "ocm_..."}
     }
   }
@@ -337,7 +337,7 @@ python run.py --exec connect
 发布是唯一会**对外产生后果**的能力，所以做了三道闸：
 
 1. **标准校验**：标题长度、话题数、封面比例、违禁词写在
-   [`xiaoe_dl/executor/standards.json`](xiaoe_dl/executor/standards.json)，
+   [`ocemind/executor/standards.json`](ocemind/executor/standards.json)，
    在提交和发布时都会检查。模型改不了这份文件，也绕不过检查。
 2. **快照绑定**：批准时记录文件与文案的哈希（`snapshot_hash`）。
    批准之后文件被改过，就拒绝执行（409），必须重新准备。
@@ -388,10 +388,10 @@ API 里也禁止了 Agent 直接提交 `publish.browser`（403）。
 
 数据都在一个目录：
 
-- `%APPDATA%\xiaoe-dl\` — `settings.json`、`tasks.json`、`executor.db`（账号/发布/用量）、`transcripts/`、`documents/`、`audio/`、`images/`
-- `%LOCALAPPDATA%\xiaoe-dl\profiles\` — 每个账号的浏览器 profile（几十 MB，不做漫游同步）
+- `%APPDATA%\ocemind\` — `settings.json`、`tasks.json`、`executor.db`（账号/发布/用量）、`transcripts/`、`documents/`、`audio/`、`images/`
+- `%LOCALAPPDATA%\ocemind\profiles\` — 每个账号的浏览器 profile（几十 MB，不做漫游同步）
 
-想整体搬家，设环境变量 `XIAOE_DL_HOME` 指向新目录即可。
+想整体搬家，设环境变量 `OCEMIND_HOME` 指向新目录即可。
 
 ---
 
@@ -399,7 +399,7 @@ API 里也禁止了 Agent 直接提交 `publish.browser`（403）。
 
 - **发布是「辅助」不是「全自动」**：平台创作后台的选择器会随改版失效。
   失效时任务会明确报「找不到上传框」，不会假装成功；改
-  [`xiaoe_dl/executor/publish/adapters.py`](xiaoe_dl/executor/publish/adapters.py) 一处即可。
+  [`ocemind/executor/publish/adapters.py`](ocemind/executor/publish/adapters.py) 一处即可。
 - **本地引擎要自己装**：转写和 OCR 默认先找本地引擎，没装就退回 API。
   需要 Key、需要联网、要花钱的是云端那一路；装好本地引擎后这两个能力离线可用。
 - **账号隔离只防串号，不做指纹伪装**：故意不做，那不是给正常运营用的。
@@ -422,13 +422,13 @@ python -m pytest -q          # 离线，秒级；当前 330 passed, 1 skipped
 | 目录 | 作用 |
 |------|------|
 | `run.py` | 唯一入口（桌面 / 网页 / Tk / 命令行 / `--exec`） |
-| `xiaoe_dl/downloader/` | 任务队列、三种下载引擎、FastAPI 服务 |
-| `xiaoe_dl/executor/` | 执行层：能力注册表、引擎、账号、发布、API、MCP、CLI |
-| `xiaoe_dl/executor/facade.py` | **四个入口共用的那层**，业务判断都在这 |
-| `xiaoe_dl/web/` | 界面（原生 HTML/CSS/JS，无构建步骤） |
-| `xiaoe_dl/desktop.py` | pywebview 桌面壳：单实例、DPI、窗口 |
+| `ocemind/downloader/` | 任务队列、三种下载引擎、FastAPI 服务 |
+| `ocemind/executor/` | 执行层：能力注册表、引擎、账号、发布、API、MCP、CLI |
+| `ocemind/executor/facade.py` | **四个入口共用的那层**，业务判断都在这 |
+| `ocemind/web/` | 界面（原生 HTML/CSS/JS，无构建步骤） |
+| `ocemind/desktop.py` | pywebview 桌面壳：单实例、DPI、窗口 |
 | `desktop/` | Tauri 2 桌面壳（Rust + 单实例 / 窗口状态 / Job Object） |
-| `xiaoe_dl/web/bridge.js` | Tauri 里接管相对路径 fetch 与文件对话框，浏览器里直接返回 |
+| `ocemind/web/static/bridge.js` | Tauri 里接管相对路径 fetch 与文件对话框，浏览器里直接返回 |
 | `tools/` | 诊断、启动器、sidecar 与便携打包 |
 | `tests/` | 单测（含能力注册表与引擎的一致性检查） |
 

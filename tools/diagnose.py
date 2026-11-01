@@ -29,10 +29,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from xiaoe_dl import auth  # noqa: E402
-from xiaoe_dl import core as download  # noqa: E402
-from xiaoe_dl import cookies as cookies_mod  # noqa: E402
-from xiaoe_dl import paths  # noqa: E402
+from ocemind import auth  # noqa: E402
+from ocemind import core as download  # noqa: E402
+from ocemind import cookies as cookies_mod  # noqa: E402
+from ocemind import paths  # noqa: E402
 
 PASS, FAIL, SKIP = "PASS", "FAIL", "SKIP"
 
@@ -221,7 +221,7 @@ def stage_playlist(ctx):
     except Exception as e:
         return Result("4-playlist", "", FAIL, f"线路{li}({lname}) m3u8 下载失败：{e}",
                       "m3u8 地址取不到。若怀疑又出了 [xiaoe] 混淆，"
-                      "用 XIAOE_DUMP_RAW=<路径> 跑一次把原始响应存下来")
+                      "用 OCEMIND_DUMP_RAW=<路径> 跑一次把原始响应存下来")
 
     segs = download.parse_segments(txt)
     ctx["segs"] = segs
@@ -327,7 +327,7 @@ def run(url=None, cookie_arg=None, app_id=None, alive_id=None,
     results = []
     failed_keys = set()
     skipped_keys = set()
-    tmpdir = tempfile.mkdtemp(prefix="xiaoe_diag_")
+    tmpdir = tempfile.mkdtemp(prefix="ocemind_diag_")
     ctx["tmpdir"] = tmpdir
 
     try:

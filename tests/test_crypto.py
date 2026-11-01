@@ -11,7 +11,7 @@
 （探索期的 _probe.bin 已清理）。
 
 真样本要等下次实际遇到 `[xiaoe]` 响应时，用
-`XIAOE_DUMP_RAW=... python run.py ...` 落一份，存成 tests/data/raw_xiaoe.bin，
+`OCEMIND_DUMP_RAW=... python run.py ...` 落一份，存成 tests/data/raw_payload.bin，
 `test_real_sample_if_available` 就会自动从 skip 变成真跑。
 """
 import base64
@@ -21,7 +21,7 @@ import string
 
 import pytest
 
-from xiaoe_dl.crypto import (ALPHABET, IDX, JS_DEFAULT_KEY, TAIL_LEN,
+from ocemind.crypto import (ALPHABET, IDX, JS_DEFAULT_KEY, TAIL_LEN,
                               decode, md5_hex, strip_prefix)
 
 KEY = "apptvagt9li8549"
@@ -160,12 +160,12 @@ def test_js_default_key_is_not_used_implicitly():
 
 
 # ------------------------------------------------- 机会主义：真实样本
-REAL_SAMPLE = os.path.join(DATA_DIR, "raw_xiaoe.bin")
+REAL_SAMPLE = os.path.join(DATA_DIR, "raw_payload.bin")
 
 
 @pytest.mark.skipif(not os.path.exists(REAL_SAMPLE),
                     reason="还没有真实 [xiaoe] 样本。遇到时用 "
-                           "XIAOE_DUMP_RAW=<路径> 跑一次即可落盘。")
+                           "OCEMIND_DUMP_RAW=<路径> 跑一次即可落盘。")
 def test_real_sample_if_available():
     raw = open(REAL_SAMPLE, "r", encoding="utf-8", errors="replace").read()
     plain = decode(strip_prefix(raw), KEY)

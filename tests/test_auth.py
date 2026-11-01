@@ -14,9 +14,9 @@ import time as _time
 import pytest
 
 from helpers import APP_ID, DAY, NOW
-from xiaoe_dl import auth
-from xiaoe_dl.auth import AuthError, Cookie, from_browser, save_cookies, to_netscape
-from xiaoe_dl.cookies import find_ko_token, parse_netscape
+from ocemind import auth
+from ocemind.auth import AuthError, Cookie, from_browser, save_cookies, to_netscape
+from ocemind.cookies import find_ko_token, parse_netscape
 
 
 def _long_ago():
@@ -261,7 +261,7 @@ def test_refresh_result_is_preferred_over_asking_user(tmp_path, monkeypatch):
 
 # ------------------------------------------------------------ api_verifier
 def test_api_verifier_true_when_api_accepts(monkeypatch):
-    import xiaoe_dl.core as core
+    import ocemind.core as core
     monkeypatch.setattr(core, "get_lookback", lambda *a, **k: ("h5", [{"x": 1}]))
     assert auth.api_verifier(APP_ID, "l_x")([_ck()]) is True
 
@@ -269,7 +269,7 @@ def test_api_verifier_true_when_api_accepts(monkeypatch):
 def test_api_verifier_false_when_api_rejects(monkeypatch):
     """这条是它存在的全部理由：匿名的 ko_token 也在、也没过期，
     但接口会拒。只有真调一次才能分辨。"""
-    import xiaoe_dl.core as core
+    import ocemind.core as core
     def reject(*a, **k):
         raise RuntimeError("code=11302")
     monkeypatch.setattr(core, "get_lookback", reject)

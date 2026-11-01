@@ -11,7 +11,7 @@ import types
 
 import pytest
 
-from xiaoe_dl import core
+from ocemind import core
 
 EXT = {"host": "https://cdn.example.com", "path": "/v", "param": "sign=x"}
 

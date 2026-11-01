@@ -1,6 +1,6 @@
 //! Tauri 壳：一个原生窗口 + 一个 Python sidecar。
 //!
-//! 界面仍然由 Python 的 FastAPI 提供（`xiaoe_dl/web`），壳层只负责：
+//! 界面仍然由 Python 的 FastAPI 提供（`ocemind/web`），壳层只负责：
 //! 选一个空闲端口、把 Python 拉起来、等 `/api/health` 通了再开窗口、
 //! 退出时先请求服务自己收尾、再把整个进程树收掉。
 //!
@@ -171,8 +171,8 @@ fn spawn(app: &tauri::AppHandle, port: u16, token: &str) -> Result<Child, String
     if let Some(root) = portable_data_dir() {
         let local = root.join("local");
         let _ = std::fs::create_dir_all(&local);
-        cmd.env("XIAOE_DL_HOME", &root)
-            .env("XIAOE_DL_LOCAL_HOME", &local)
+        cmd.env("OCEMIND_HOME", &root)
+            .env("OCEMIND_LOCAL_HOME", &local)
             .env("OCEMIND_PORTABLE", "1");
     }
 

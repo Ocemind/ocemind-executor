@@ -17,10 +17,10 @@ a = Analysis(
     pathex=['.'],
     binaries=[],
     datas=[
-        ('xiaoe_dl/web', 'xiaoe_dl/web'),
-        ('xiaoe_dl/executor/standards.json', 'xiaoe_dl/executor'),
+        ('ocemind/web', 'ocemind/web'),
+        ('ocemind/executor/standards.json', 'ocemind/executor'),
     ],
-    hiddenimports=['xiaoe_dl.crypto'],
+    hiddenimports=['ocemind.crypto'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

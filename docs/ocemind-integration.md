@@ -1,7 +1,7 @@
 # Ocemind 内容执行器 —— 在 课程下载器上落地的技术梳理
 
 > 状态：**方案稿，已落地**（2026-10-31）。实现细节以
-> [README](../README.md) 和 `xiaoe_dl/executor/` 的代码为准，本文只保留当时的
+> [README](../README.md) 和 `ocemind/executor/` 的代码为准，本文只保留当时的
 > 判断过程。文中"16 个能力"的口径后来被 [scope-v2](scope-v2.md) 收敛过，
 > 最终按用户确认的 13 项实现。
 
@@ -34,13 +34,13 @@
 
 | 文件 | 行数 | 提供的能力 | 泛化后还缺什么 |
 |------|------|-----------|---------------|
-| `xiaoe_dl/downloader/manager.py` | 565 | 队列、并发、暂停/恢复/重试、进度采样、持久化、去重 | 任务类型写死 3 种；引擎写死 import |
-| `xiaoe_dl/downloader/http_downloader.py` | 432 | Range 分片、断点续传、限速 | 无 |
-| `xiaoe_dl/downloader/ytdlp_engine.py` | 203 | 子进程封装、进度 JSON 解析、可中断 | 无 |
-| `xiaoe_dl/downloader/api.py` | 227 | FastAPI 本地服务 | 无对外契约、无 token |
-| `xiaoe_dl/desktop.py` | 187 | pywebview 窗口、单实例互斥、DPI、退浏览器 | 只有"任务/设置"两屏 |
-| `xiaoe_dl/downloader/config.py` | 193 | 设置读写、老版本迁移 | 无按能力的设置命名空间 |
-| `xiaoe_dl/web/` | ~41 KB | 任务列表 UI | 无多能力界面 |
+| `ocemind/downloader/manager.py` | 565 | 队列、并发、暂停/恢复/重试、进度采样、持久化、去重 | 任务类型写死 3 种；引擎写死 import |
+| `ocemind/downloader/http_downloader.py` | 432 | Range 分片、断点续传、限速 | 无 |
+| `ocemind/downloader/ytdlp_engine.py` | 203 | 子进程封装、进度 JSON 解析、可中断 | 无 |
+| `ocemind/downloader/api.py` | 227 | FastAPI 本地服务 | 无对外契约、无 token |
+| `ocemind/desktop.py` | 187 | pywebview 窗口、单实例互斥、DPI、退浏览器 | 只有"任务/设置"两屏 |
+| `ocemind/downloader/config.py` | 193 | 设置读写、老版本迁移 | 无按能力的设置命名空间 |
+| `ocemind/web/` | ~41 KB | 任务列表 UI | 无多能力界面 |
 | `tools/make_launcher.py` | 202 | **生成 pythonw 快捷方式绕开 SAC** | 只有 Windows 版 |
 | `tests/` | 16 个 | 离线快速回归 | 需为新能力补 smoke 用例 |
 
@@ -115,7 +115,7 @@ body: { snapshot_hash: "<sha256 of the exact output files>" }
 
 **方案：能力清单是代码里的注册表，不是 md 文件。**
 
-新增 `xiaoe_dl/engines/registry.py`：
+新增 `ocemind/executor/engines/registry.py`：
 
 ```python
 @dataclass(frozen=True)
@@ -208,12 +208,12 @@ idem = sha256(capability_id + canonical_params + input_fingerprint)[:16]
 ### 预算强制（规格要求）
 
 `POST` 任何付费能力前先查当月累计；超预算返回 **402**，不是警告横幅。
-记账落 SQLite（`%APPDATA%\xiaoe-dl\ocemind.db`），因为要按时间聚合，
+记账落 SQLite（`%APPDATA%\ocemind\ocemind.db`），因为要按时间聚合，
 `tasks.json` 那种全量重写不适合。
 
 ### Agent 接入与真实限制披露（规格要求）
 
-- `xiaoe_dl/cli.py` 已有模式，扩成 `run.py --api ...` 即可
+- `ocemind/cli.py` 已有模式，扩成 `run.py --api ...` 即可
 - MCP server = 这层 API 的 stdio 薄包装，约 20 行
 - **必须明说**：云上的 Agent 打不到 `127.0.0.1`。Agent 必须跑在本机或
   Tailscale 内。这条要出现在能力清单和文档里，不能让用户自己撞墙
@@ -261,7 +261,7 @@ idem = sha256(capability_id + canonical_params + input_fingerprint)[:16]
 ## 5. 目标结构（改动都是新增，老代码基本不动）
 
 ```
-xiaoe_dl/
+ocemind/
 ├── engines/                    ← 新增：能力适配器
 │   ├── registry.py             ← 注册表 + Capability 定义
 │   ├── transcribe.py           ← ASR

@@ -2,16 +2,16 @@
 """界面静态资源的路径不变量。
 
 这套界面有两个加载入口：FastAPI 自己挂在 /static，Tauri 直接把
-`xiaoe_dl/web` 当 frontendDist 按相对路径取。两边都要求 index.html 里的
+`ocemind/web` 当 frontendDist 按相对路径取。两边都要求 index.html 里的
 `static/...` 真的指向 `web/static/...`。资源一挪位置，网页版和桌面版会
 同时变成一页没有样式的裸 HTML，且不会报错——所以钉住这条。
 """
 import re
 from pathlib import Path
 
-from xiaoe_dl import paths
+from ocemind import paths
 
-WEB = Path(paths.project_root()) / "xiaoe_dl" / "web"
+WEB = Path(paths.project_root()) / "ocemind" / "web"
 
 
 def test_index_html_references_existing_assets():

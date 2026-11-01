@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
 """downloader.config —— 数据目录统一与一次性迁移。
 
-合并前 tdm-lite 把配置存在 `%APPDATA%\\TDMLite`，Tk 界面把保存目录存在
-`%APPDATA%\\xiaoe-dl\\config.json` 的 `out_dir` 里。合并后三者共用
-`%APPDATA%\\xiaoe-dl`，旧数据只能迁一次：新 settings.json 已经在就绝不能再覆盖，
+合并前那版下载器把配置存在 `%APPDATA%\\TDMLite`，Tk 界面把保存目录存在
+`%APPDATA%\\ocemind\\config.json` 的 `out_dir` 里。合并后三者共用
+`%APPDATA%\\ocemind`，旧数据只能迁一次：新 settings.json 已经在就绝不能再覆盖，
 否则用户改过的设置会被旧值悄悄盖回去。
 """
 import json
 
 import pytest
 
-from xiaoe_dl import paths
-from xiaoe_dl.downloader.config import DEFAULT_SETTINGS, Config
+from ocemind import paths
+from ocemind.downloader.config import DEFAULT_SETTINGS, Config
 
 
 def _read(path):
@@ -61,7 +61,7 @@ def test_legacy_tasks_are_copied(tmp_path):
 
 
 def test_tk_out_dir_seeds_default_dir(tmp_path):
-    """没有 tdm-lite 的旧设置时，退回 Tk 界面记的保存目录。"""
+    """没有旧版本的设置时，退回 Tk 界面记的保存目录。"""
     (tmp_path / "config.json").write_text(
         json.dumps({"out_dir": "F:/课程"}), encoding="utf-8")
 
@@ -166,8 +166,6 @@ def test_explicit_home_never_reads_real_legacy_dir(tmp_path, monkeypatch):
 
 
 def test_app_dir_env_override(monkeypatch, tmp_path):
-    monkeypatch.setenv("XIAOE_DL_HOME", str(tmp_path / "override"))
+    monkeypatch.setenv("OCEMIND_HOME", str(tmp_path / "override"))
     assert paths.app_dir() == str(tmp_path / "override")
-    monkeypatch.delenv("XIAOE_DL_HOME")
-    monkeypatch.setenv("TDMLITE_HOME", str(tmp_path / "old"))
-    assert paths.app_dir() == str(tmp_path / "old")
+    assert not (tmp_path / "override").exists()  # 只是一个路径，不该被建出来

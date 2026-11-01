@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from xiaoe_dl.downloader.config import Config
-from xiaoe_dl.executor import feishu
-from xiaoe_dl.executor.store import Store
+from ocemind.downloader.config import Config
+from ocemind.executor import feishu
+from ocemind.executor.store import Store
 
 
 @pytest.fixture()

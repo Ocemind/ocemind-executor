@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from xiaoe_dl.core import safe_name
+from ocemind.core import safe_name
 
 
 @pytest.mark.parametrize("bad", list('<>:"/\\|?*'))

@@ -31,7 +31,7 @@
 
 ## 第 1 跳 · `get_lookback_list`
 
-**代码位置**：[`xiaoe_dl/core.py`](../xiaoe_dl/core.py) 的 `lookback_api()`
+**代码位置**：[`ocemind/core.py`](../ocemind/core.py) 的 `lookback_api()`
 （拼 URL）、`parse_lookback()`（解响应）、`get_lookback()`（串起来）
 
 **URL**（`protection=0` 是关键，去掉会拿到加密流）：
@@ -118,8 +118,8 @@ seg_00002.ts
 - 触发时会打印 `[crypto] 已解混淆播放列表`。**看到这行要留意**，说明站方改了。
 - 手上已经没有真实的混淆样本了（探索期的 `_probe.bin` 已清理），所以
   `tests/test_crypto.py` 测的是「解码器相对自身自洽」，**不能证明对真样本解对**。
-- 真遇到时用 `XIAOE_DUMP_RAW=<路径>` 跑一次，把原始响应落盘存成
-  `tests/data/raw_xiaoe.bin`，那个测试会自动从 skip 变成真跑。
+- 真遇到时用 `OCEMIND_DUMP_RAW=<路径>` 跑一次，把原始响应落盘存成
+  `tests/data/raw_payload.bin`，那个测试会自动从 skip 变成真跑。
 
 ---
 
@@ -220,7 +220,7 @@ https://{app_id}.h5.xiaoeknow.com/_alive/v3/base_info?app_id={app_id}&resource_i
 **多条同名 `ko_token`**。全拼进一个 Cookie 头服务端行为未定义。所以一律走
 `cookies.cookie_header_for_app()` 按域过滤，**不要**自己拼 Cookie 头。
 
-相关代码：`xiaoe_dl/cookies.py`（解析/过滤/状态）、`xiaoe_dl/auth.py`（拿登录态）。
+相关代码：`ocemind/cookies.py`（解析/过滤/状态）、`ocemind/auth.py`（拿登录态）。
 
 ---
 
@@ -230,7 +230,7 @@ https://{app_id}.h5.xiaoeknow.com/_alive/v3/base_info?app_id={app_id}&resource_i
 
 | 断点阶段 | 症状 | 最可能变的东西 | 去改/去看 |
 |---------|------|--------------|----------|
-| `1-cookie` | 没有有效 ko_token | — | 不是改版。重新导入 cookies，或 `python -m xiaoe_dl.auth --login --app-id <id>` |
+| `1-cookie` | 没有有效 ko_token | — | 不是改版。重新导入 cookies，或 `python -m ocemind.auth --login --app-id <id>` |
 | `2-url` | 抠不出 app_id / alive_id | 链接的参数名变了 | `core.parse_course_url()` —— 改参数名或正则 |
 | `3-api` | HTTP 错 / JSON 解析错 | **接口路径或域名前缀变了** | `core.h5_base()` / `core.lookback_api()` |
 | `3-api` | `code` 是个新数字 | 站方加了新错误码 | `core.CODE_HINT` 补一行；顺便看 `msg` 说什么 |
@@ -238,7 +238,7 @@ https://{app_id}.h5.xiaoeknow.com/_alive/v3/base_info?app_id={app_id}&resource_i
 | `3-api` | `data` 拿到了但挑不出线路 | `ext.host` / `url` 字段改名或挪位置了 | `core.pick_line()` —— 它按 `ext.host` + `url` 过滤 |
 | `4-playlist` | m3u8 拿不到 | `line_sharpness[].url` 不是 m3u8 了 | 先看 `3-api` 的响应原文 |
 | `4-playlist` | 拿到了但解析不出分片 | 清单格式变了（不再是裸 HLS） | `core.parse_segments()` |
-| `4-playlist` | 打印了 `[crypto]` | **站方又开始返回混淆内容了** | 见上文「关于 `[xiaoe]` 混淆分支」。用 `XIAOE_DUMP_RAW` 落样本 |
+| `4-playlist` | 打印了 `[crypto]` | **站方又开始返回混淆内容了** | 见上文「关于 `[xiaoe]` 混淆分支」。用 `OCEMIND_DUMP_RAW` 落样本 |
 | `5-segment` | 拼出来的地址 404 / 403 | **`ext.host` / `ext.path` / `ext.param` 的拼法变了** | `core.abs_url()` |
 | `5-segment` | 首字节不是 `0x47` | CDN 返回错误页，多半是签名参数名变了 | 看 `ext.param` 原文里都有什么 |
 | `5-segment` | **报「CDN 忽略了 Range 头」** | CDN 不再支持 `Range`，或分片改回整文件寻址 | 对比第 4 跳报的寻址方式。若真不支持 Range 了，区间分片这条路要走 CDN 参数 |

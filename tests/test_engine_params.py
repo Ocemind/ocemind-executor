@@ -12,12 +12,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from xiaoe_dl.downloader.config import Config
-from xiaoe_dl.executor import backends
-from xiaoe_dl.executor.artifacts import file_kind
-from xiaoe_dl.executor.engines import audio_gen, image, media
-from xiaoe_dl.executor.engines.base import Ctx
-from xiaoe_dl.paths import ffmpeg_exe as find_ffmpeg
+from ocemind.downloader.config import Config
+from ocemind.executor import backends
+from ocemind.executor.artifacts import file_kind
+from ocemind.executor.engines import audio_gen, image, media
+from ocemind.executor.engines.base import Ctx
+from ocemind.paths import ffmpeg_exe as find_ffmpeg
 
 
 def wav_bytes(seconds: float, rate: int = 8000) -> bytes:

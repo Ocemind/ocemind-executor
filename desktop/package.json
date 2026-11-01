@@ -1,7 +1,7 @@
 {
   "name": "ocemind-desktop",
   "private": true,
-  "version": "2.3.1",
+  "version": "2.3.2",
   "description": "Ocemind 内容执行器的 Tauri 桌面壳",
   "scripts": {
     "tauri": "tauri",

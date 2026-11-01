@@ -21,7 +21,7 @@ ISG 信誉放行可执行文件：老 exe 攒够了信誉所以能跑，但**每
 ----
     python tools/make_launcher.py                  # 建「Ocemind 内容执行器」并清理旧快捷方式
     python tools/make_launcher.py --tk             # 另建一个 Tk 界面入口
-    python tools/make_launcher.py --keep-old       # 不清理旧版（TDM Lite 等）的快捷方式
+    python tools/make_launcher.py --keep-old       # 不清理旧版的快捷方式
     python tools/make_launcher.py --name "下载器"   # 自定义快捷方式名
     python tools/make_launcher.py --remove         # 卸载启动器
 """
@@ -37,7 +37,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from xiaoe_dl.paths import desktop_dir  # noqa: E402
+from ocemind.paths import desktop_dir  # noqa: E402
 
 LAUNCHER_NAME = "Ocemind 内容执行器"
 TK_LAUNCHER_NAME = "Ocemind 内容执行器 (Tk)"
@@ -140,7 +140,7 @@ def main():
     ap.add_argument("--name", default="", help="快捷方式名（不含 .lnk）")
     ap.add_argument("--tk", action="store_true", help="建 Tk 界面入口（run.py --tk）")
     ap.add_argument("--keep-old", action="store_true",
-                    help="不清理旧版（TDM Lite 等）的快捷方式")
+                    help="不清理旧版的快捷方式")
     ap.add_argument("--no-rename", action="store_true",
                     help="不重命名桌面上现有的旧版 exe")
     ap.add_argument("--remove", action="store_true", help="删除启动器")

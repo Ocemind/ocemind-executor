@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from xiaoe_dl.executor import artifacts
-from xiaoe_dl.executor.store import Store
+from ocemind.executor import artifacts
+from ocemind.executor.store import Store
 
 
 @pytest.fixture()

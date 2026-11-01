@@ -5,20 +5,20 @@ import tempfile
 import time
 from pathlib import Path
 
-HOME = Path(tempfile.mkdtemp(prefix="tdmlite-home-"))
-os.environ["XIAOE_DL_HOME"] = str(HOME)
+HOME = Path(tempfile.mkdtemp(prefix="ocemind-home-"))
+os.environ["OCEMIND_HOME"] = str(HOME)
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from xiaoe_dl.downloader.config import Config  # noqa: E402
-from xiaoe_dl.downloader.http_downloader import SegmentedDownload, probe_http  # noqa: E402
-from xiaoe_dl.downloader.manager import TaskManager  # noqa: E402
+from ocemind.downloader.config import Config  # noqa: E402
+from ocemind.downloader.http_downloader import SegmentedDownload, probe_http  # noqa: E402
+from ocemind.downloader.manager import TaskManager  # noqa: E402
 
 BAD = "https://www.example.com/this-path-does-not-exist-98765"
 
 
 def main() -> int:
     cfg = Config()
-    out = Path(tempfile.mkdtemp(prefix="tdmlite-err-"))
+    out = Path(tempfile.mkdtemp(prefix="ocemind-err-"))
     cfg.update({"defaultDir": str(out)})
 
     probe = probe_http(BAD)

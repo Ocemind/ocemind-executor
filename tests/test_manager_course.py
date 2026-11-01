@@ -6,9 +6,9 @@
 """
 import pytest
 
-from xiaoe_dl.downloader import manager as manager_mod
-from xiaoe_dl.downloader.config import Config
-from xiaoe_dl.downloader.manager import TaskManager
+from ocemind.downloader import manager as manager_mod
+from ocemind.downloader.config import Config
+from ocemind.downloader.manager import TaskManager
 
 URL = "https://app1.h5.xiaoeknow.com/p/course/video/l_abcdef1234567890abcd"
 

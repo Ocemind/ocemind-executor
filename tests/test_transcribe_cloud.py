@@ -21,7 +21,7 @@ import urllib.error
 
 import pytest
 
-from xiaoe_dl.executor.engines import transcribe
+from ocemind.executor.engines import transcribe
 
 
 class FakeResp:

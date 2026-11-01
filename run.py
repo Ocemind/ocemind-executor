@@ -11,7 +11,7 @@
 fastapi / uvicorn / pywebview 都只在真正需要时才导入：Tk 与命令行用户
 不该为它们多等启动时间，也不该因为没装它们就跑不起来。
 
-包内一律用绝对导入（`from xiaoe_dl.x import y`），这样无论从哪个目录调用
+包内一律用绝对导入（`from ocemind.x import y`），这样无论从哪个目录调用
 都不会因为模块搜索路径而失败。
 """
 import contextlib
@@ -49,9 +49,9 @@ def _run_cli():
     打包成 --windowed 后没有控制台，所以输出要落一份日志文件，
     否则出错时什么都看不到。源码运行时同时打屏，方便直接看进度。
     """
-    from xiaoe_dl.cli import main as cli_main
+    from ocemind.cli import main as cli_main
 
-    log_path = os.path.join(os.environ.get("TEMP", "."), "xiaoe-cli.log")
+    log_path = os.path.join(os.environ.get("TEMP", "."), "ocemind-cli.log")
     real_out, real_err = sys.stdout, sys.stderr
     for st in (real_out, real_err):
         try:
@@ -83,9 +83,9 @@ def _serve(argv):
     """
     import uvicorn
 
-    from xiaoe_dl.downloader.api import create_app
-    from xiaoe_dl.downloader.config import Config
-    from xiaoe_dl.downloader.manager import TaskManager
+    from ocemind.downloader.api import create_app
+    from ocemind.downloader.config import Config
+    from ocemind.downloader.manager import TaskManager
 
     port = int(os.environ.get("OCEMIND_PORT") or "8765")
     if "--port" in argv:
@@ -98,7 +98,7 @@ def _serve(argv):
     cfg = Config()
     # 打包成窗口程序（console=False）时 stdout/stderr 可能是 None；
     # 有 Rust 壳接管管道时它们是真流，这里不会动。
-    from xiaoe_dl.desktop import _redirect_stdout
+    from ocemind.desktop import _redirect_stdout
 
     _redirect_stdout(cfg.log_path)
 
@@ -146,22 +146,22 @@ def main():
     if "--serve" in argv:
         _serve(argv)
     elif "--tk" in argv:
-        from xiaoe_dl.gui import main_gui
+        from ocemind.gui import main_gui
 
         main_gui()
     elif "--web" in argv:
-        from xiaoe_dl.desktop import main as desktop_main
+        from ocemind.desktop import main as desktop_main
 
         desktop_main(force_browser=True)
     elif "--exec" in argv:
         # 执行器的命令行：和界面共用同一个后端，只是换个入口
-        from xiaoe_dl.executor.cli import main as exec_main
+        from ocemind.executor.cli import main as exec_main
 
         raise SystemExit(exec_main(argv[argv.index("--exec") + 1:]))
     elif argv:
         _run_cli()
     else:
-        from xiaoe_dl.desktop import main as desktop_main
+        from ocemind.desktop import main as desktop_main
 
         desktop_main()
 

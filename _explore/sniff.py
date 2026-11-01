@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-小鹅通课程真实 m3u8 抓取 —— Phase 1
+课程平台课程真实 m3u8 抓取 —— Phase 1
 
 目标：不重新登录、不手动导 cookie、不依赖 F12，
-      自动从已登录的 Chrome Profile 2 中捕获小鹅通播放器真正请求的 m3u8。
+      自动从已登录的 Chrome Profile 2 中捕获课程平台播放器真正请求的 m3u8。
 
 原理：
   1. 把已登录的 Profile 2 复制成一份独立的调试快照（不影响日常 Chrome，
@@ -14,7 +14,7 @@
   4. 导出当前登录态 cookies.txt，输出可直接喂给 yt-dlp 的命令。
 
 用法：
-  python sniff.py --url "课程网页URL" [--wait 25] [--cookies-out D:/视频/cookies_xiaoe.txt]
+  python sniff.py --url "课程网页URL" [--wait 25] [--cookies-out D:/视频/cookies_site.txt]
 
 注意：
   - 每次运行前，先关闭上一次由本脚本打开的“调试 Chrome”窗口（否则 user-data-dir 被占用）。
@@ -33,9 +33,11 @@ from playwright.async_api import async_playwright
 
 # ---------- 环境配置（已核对本机路径） ----------
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
-REAL_PROFILE = r"C:\Users\TimiHub\AppData\Local\Google\Chrome\User Data\Profile 2"
-REAL_LOCAL_STATE = r"C:\Users\TimiHub\AppData\Local\Google\Chrome\User Data\Local State"
-DEBUG_DIR = r"D:\视频\xiaoe-debug"
+_CHROME_UDD = os.path.join(os.path.expanduser("~"), "AppData", "Local",
+                           "Google", "Chrome", "User Data")
+REAL_PROFILE = os.path.join(_CHROME_UDD, "Profile 2")
+REAL_LOCAL_STATE = os.path.join(_CHROME_UDD, "Local State")
+DEBUG_DIR = r"D:\视频\ocemind-debug"
 DEBUG_PROFILE = os.path.join(DEBUG_DIR, "Profile 2")
 
 # 复制 Profile 时跳过的缓存目录（省时省空间，且不破坏登录态）
@@ -193,9 +195,9 @@ async def main(url: str, wait: int, cookies_out: str) -> None:
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(description="小鹅通课程真实 m3u8 抓取（Phase 1）")
+    ap = argparse.ArgumentParser(description="课程平台课程真实 m3u8 抓取（Phase 1）")
     ap.add_argument("--url", required=True, help="课程网页 URL")
     ap.add_argument("--wait", type=int, default=25, help="打开后监听秒数，默认 25")
-    ap.add_argument("--cookies-out", default=r"D:\视频\cookies_xiaoe.txt")
+    ap.add_argument("--cookies-out", default=r"D:\视频\cookies_site.txt")
     args = ap.parse_args()
     asyncio.run(main(args.url, args.wait, args.cookies_out))

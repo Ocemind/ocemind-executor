@@ -68,7 +68,7 @@ def try_decode(obf: str):
 
 
 if __name__ == "__main__":
-    raw = open(r"D:\视频\xiaoe-js\js_100.js", encoding="utf-8", errors="ignore").read()
+    raw = open(r"D:\视频\site-js\js_100.js", encoding="utf-8", errors="ignore").read()
     d = json.loads(raw.split("\n", 1)[1])
     for li, line in enumerate(d["data"]):
         for si, s in enumerate(line["line_sharpness"]):

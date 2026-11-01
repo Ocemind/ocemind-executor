@@ -2,7 +2,7 @@
 """paths —— 尤其是「便携资源目录」的语义。
 
 包化之后最容易悄悄坏掉的就是这个：`dirname(__file__)` 从项目根变成了
-包目录，于是「把 cookies.txt 放在 exe 旁边」就漂移成了「放在 xiaoe_dl/ 里」。
+包目录，于是「把 cookies.txt 放在 exe 旁边」就漂移成了「放在 ocemind/ 里」。
 不会报错，只是找不到 cookie 文件。
 """
 import os
@@ -10,20 +10,20 @@ import sys
 
 import pytest
 
-from xiaoe_dl import paths
+from ocemind import paths
 
 
 def test_project_root_is_repo_root():
     root = paths.project_root()
     assert os.path.isfile(os.path.join(root, "run.py"))
-    assert os.path.isdir(os.path.join(root, "xiaoe_dl"))
+    assert os.path.isdir(os.path.join(root, "ocemind"))
 
 
 def test_source_mode_resource_dir_is_project_root():
     """源码运行时，便携 cookie 该在项目根目录找，不是包目录里。"""
     assert not paths.is_frozen()
     assert paths.resource_dir() == paths.project_root()
-    assert not paths.resource_dir().endswith("xiaoe_dl")
+    assert not paths.resource_dir().endswith("ocemind")
 
 
 def test_frozen_mode_resource_dir_is_exe_dir(monkeypatch):
@@ -50,7 +50,7 @@ def test_cookie_candidates_order():
         return next(i for i, c in enumerate(cands) if fragment in c)
 
     # 规范位置第一，便携位置第二，老位置垫底
-    assert idx(os.path.join("xiaoe-dl", "cookies.txt")) == 0
+    assert idx(os.path.join("ocemind", "cookies.txt")) == 0
     assert idx("cookies_session") > idx("cookies.txt")
     assert any(c.startswith(r"D:\视频") for c in cands)
 
@@ -83,7 +83,32 @@ def test_desktop_dir_falls_back_when_user_profile_is_wrong(monkeypatch):
 
 def test_app_dir_follows_appdata(monkeypatch):
     monkeypatch.setenv("APPDATA", r"C:\Users\X\AppData\Roaming")
-    assert paths.app_dir() == os.path.join(r"C:\Users\X\AppData\Roaming", "xiaoe-dl")
+    assert paths.app_dir() == os.path.join(r"C:\Users\X\AppData\Roaming", "ocemind")
+
+
+def test_legacy_data_dir_is_renamed_on_first_run(monkeypatch, tmp_path):
+    """升级后第一次启动要整体搬目录，否则用户看到的是「设置全没了」。"""
+    base = tmp_path / "appdata"
+    legacy = base / paths.LEGACY_DIR_NAME
+    legacy.mkdir(parents=True)
+    (legacy / "settings.json").write_text("{}", encoding="utf-8")
+    monkeypatch.delenv("OCEMIND_HOME", raising=False)
+    monkeypatch.setenv("APPDATA", str(base))
+    assert paths.app_dir() == str(base / "ocemind")
+    assert (base / "ocemind" / "settings.json").is_file()
+    assert not legacy.exists()
+
+
+def test_existing_new_dir_wins_over_legacy(monkeypatch, tmp_path):
+    """新目录已经在用就别去动旧目录，两份数据并存比改名失败更难查。"""
+    base = tmp_path / "appdata"
+    (base / "ocemind").mkdir(parents=True)
+    legacy = base / paths.LEGACY_DIR_NAME
+    legacy.mkdir(parents=True)
+    monkeypatch.delenv("OCEMIND_HOME", raising=False)
+    monkeypatch.setenv("APPDATA", str(base))
+    assert paths.app_dir() == str(base / "ocemind")
+    assert legacy.is_dir()
 
 
 def test_profile_dir_is_under_localappdata_not_appdata(monkeypatch):
@@ -98,15 +123,15 @@ def test_profile_dir_is_under_localappdata_not_appdata(monkeypatch):
 
 def test_local_app_dir_can_be_overridden_for_portable(monkeypatch, tmp_path):
     """便携版把浏览器 profile 也留在解压目录里，不写用户目录。"""
-    monkeypatch.setenv("XIAOE_DL_LOCAL_HOME", str(tmp_path))
+    monkeypatch.setenv("OCEMIND_LOCAL_HOME", str(tmp_path))
     assert paths.local_app_dir() == str(tmp_path)
 
 
 def test_local_app_dir_defaults_to_localappdata(monkeypatch):
-    monkeypatch.delenv("XIAOE_DL_LOCAL_HOME", raising=False)
+    monkeypatch.delenv("OCEMIND_LOCAL_HOME", raising=False)
     monkeypatch.setenv("LOCALAPPDATA", r"C:\Users\X\AppData\Local")
     assert paths.local_app_dir() == os.path.join(
-        r"C:\Users\X\AppData\Local", "xiaoe-dl")
+        r"C:\Users\X\AppData\Local", "ocemind")
 
 
 def test_find_ffmpeg_returns_something_usable():

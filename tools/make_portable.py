@@ -15,7 +15,7 @@
     OcemindExecutor/
     ├── runtime/            python.exe + 标准库（免安装）
     ├── vendor/             fastapi / uvicorn / yt-dlp / pillow / pypdf ...
-    ├── app/xiaoe_dl/       程序本体
+    ├── app/ocemind/       程序本体
     ├── run.py
     └── 启动.bat
 """
@@ -34,7 +34,7 @@ ROOT = Path(__file__).resolve().parent.parent
 PY_VERSION = "3.12.8"
 PY_URL = f"https://www.python.org/ftp/python/{PY_VERSION}/python-{PY_VERSION}-embed-amd64.zip"
 
-COPY_DIRS = ["xiaoe_dl"]
+COPY_DIRS = ["ocemind"]
 COPY_FILES = ["run.py", "requirements.txt", "README.md"]
 
 LAUNCHER = """@echo off
@@ -50,7 +50,7 @@ chcp 65001 >nul
 cd /d "%~dp0"
 set "PYTHONPATH=%~dp0app;%~dp0vendor"
 set "PYTHONUTF8=1"
-"%~dp0runtime\\python.exe" -m xiaoe_dl.executor.cli %*
+"%~dp0runtime\\python.exe" -m ocemind.executor.cli %*
 """
 
 PTH = """app
@@ -151,7 +151,7 @@ def main() -> int:
 
     print()
     print("完成。整个目录拷到别的电脑，双击「启动.bat」即可。")
-    print("数据（设置、任务、账号 profile）在 %APPDATA%\\xiaoe-dl，备份这一个目录就够。")
+    print("数据（设置、任务、账号 profile）在 %APPDATA%\\ocemind，备份这一个目录就够。")
     return 0
 
 

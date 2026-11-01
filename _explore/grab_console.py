@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-从小鹅通播放器的 console 输出中直接取得解密后的 m3u8。
+从课程平台播放器的 console 输出中直接取得解密后的 m3u8。
 
 原理（来自反编译播放器 JS）：
   var r = f["confusion"].decode(raw, key);
@@ -141,7 +141,7 @@ if __name__ == "__main__":
     ap.add_argument("--url", required=True)
     ap.add_argument("--cookies", default=r"D:\视频\cookies_session.txt")
     ap.add_argument("--wait", type=int, default=45)
-    ap.add_argument("--dump", default=r"D:\视频\xiaoe_console.log")
+    ap.add_argument("--dump", default=r"D:\视频\ocemind_console.log")
     ap.add_argument("--out", default=r"D:\视频\decoded_playlist.m3u8")
     ap.add_argument("--keep", action="store_true")
     asyncio.run(main(ap.parse_args()))

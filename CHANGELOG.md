@@ -1,7 +1,22 @@
 # 更新日志
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
-版本号见 `xiaoe_dl/__init__.py`。
+版本号见 `ocemind/__init__.py`。
+
+## [2.3.2] - 2026-11-01
+
+### 变更
+
+- **包名与数据目录统一到 `ocemind`**：Python 包 `xiaoe_dl/` 改名 `ocemind/`，
+  数据目录从 `%APPDATA%\xiaoe-dl` 改为 `%APPDATA%\ocemind`。升级后第一次启动
+  会把旧目录整体改名迁移，设置、任务、浏览器登录态跟着走；旧版本还在运行、
+  目录被占用时不动，继续用旧目录，绝不出现「配置全丢」
+- **环境变量统一**：`XIAOE_DL_HOME` / `XIAOE_DL_LOCAL_HOME` / `XIAOE_DUMP_RAW`
+  改为 `OCEMIND_HOME` / `OCEMIND_LOCAL_HOME` / `OCEMIND_DUMP_RAW`
+- **下载中间文件后缀**：`.tdmpart` / `.tdmlite.json` 改为 `.ocemind.part` /
+  `.ocemind.json`；旧后缀仍然认，没下完的任务能接着续传
+- 文档、注释、构建脚本里的旧品牌字样一并清掉。接口域名 `xiaoeknow.com`
+  是站方的，保持原样
 
 ## [2.3.1] - 2026-11-01
 
@@ -28,7 +43,7 @@ Windows 安装包 / 便携版和 Linux AppImage 的构建链路，两端都能�
 ### 新增
 
 - **Tauri 2 桌面壳**（`desktop/`）：原生窗口 + 单实例 + 窗口状态记忆 +
-  文件对话框 + 系统浏览器打开外链。界面仍由同一套 `xiaoe_dl/web` 提供，
+  文件对话框 + 系统浏览器打开外链。界面仍由同一套 `ocemind/web` 提供，
   不另做一套前端
 - **Python sidecar 模式**：`python run.py --serve --port N` 只起本地
   服务，不开窗口；`/api/health` 给壳层探活，`/api/shutdown` 带一次性
@@ -36,7 +51,7 @@ Windows 安装包 / 便携版和 Linux AppImage 的构建链路，两端都能�
 - **随机端口**：桌面版由壳层分配空闲端口，「连接 Agent」显示的本机 /
   局域网地址会跟着实际端口走，不再写死 8765
 - **便携版数据目录**：exe 旁边放 `portable.ini` 时，设置、任务、浏览器
-  profile 都写进同目录的 `data/`，可用 `XIAOE_DL_LOCAL_HOME` 单独覆盖
+  profile 都写进同目录的 `data/`，可用 `OCEMIND_LOCAL_HOME` 单独覆盖
   profile 位置
 - **打包脚本**：`tools/build_sidecar.py`（PyInstaller sidecar）、
   `tools/make_portable_desktop.py`（便携 zip）；Windows per-user MSI
@@ -69,10 +84,10 @@ Windows 安装包 / 便携版和 Linux AppImage 的构建链路，两端都能�
 
 ### 变更
 
-- 静态资源移入 `xiaoe_dl/web/static/`：`index.html` 里的 `static/...`
+- 静态资源移入 `ocemind/web/static/`：`index.html` 里的 `static/...`
   在 FastAPI（挂载 `/static`）和 Tauri（按 frontendDist 相对路径）下
   指向同一份文件，不会出现「网页版有样式、桌面版是裸 HTML」
-- 新增 `xiaoe_dl/web/bridge.js`：Tauri 里接管相对路径 fetch、把
+- 新增 `ocemind/web/static/bridge.js`：Tauri 里接管相对路径 fetch、把
   pywebview 的文件选择接口换成 Tauri 命令；浏览器里直接返回，不影响
   原有网页模式
 - MSI 语言固定 `zh-CN`（代码页 936）：中文产品名在默认 en-US/1252 下
@@ -137,7 +152,7 @@ Windows 安装包 / 便携版和 Linux AppImage 的构建链路，两端都能�
 
 ### 新增
 
-- **抖音专用解析器**（`xiaoe_dl/douyin.py`）：跟短链拿作品 ID → 本机
+- **抖音专用解析器**（`ocemind/douyin.py`）：跟短链拿作品 ID → 本机
   Chrome 打开作品页 → 从播放器的网络请求里取视频流 / 音频流地址 →
   Range 分段下载 → ffmpeg 无损合并。输出 1080x1920 H.264 + AAC 的 mp4
 - **粘贴整段分享文案**：`7.61 复制打开抖音… https://v.douyin.com/xxx/ …`
@@ -228,7 +243,7 @@ Windows 安装包 / 便携版和 Linux AppImage 的构建链路，两端都能�
 - **账号浏览器**：每个账号独立 Chromium profile，界面里直接看画面并操作；
   登录态按 cookie 过期时间 + 页面探活双信号判定，3 天内标黄、7 天没登录提醒
 - **浏览器发布**：标准校验 → 快照哈希绑定 → 发布后回读确认；Agent 不能直接批准
-- **Agent 三入口**：MCP（`python -m xiaoe_dl.executor.mcp`，7 个工具）、
+- **Agent 三入口**：MCP（`python -m ocemind.executor.mcp`，7 个工具）、
   HTTP `/api/v1`（Bearer 令牌）、CLI（`python run.py --exec ...`），
   共用 `executor/facade.py` 一层
 - **用量与预算**：付费能力按次记账，按月封顶，超预算直接拒单；
@@ -276,7 +291,7 @@ Windows 安装包 / 便携版和 Linux AppImage 的构建链路，两端都能�
 
 ## [1.1.0] - 2026-10-20
 
-并入自建的通用下载器（原 `tdm-lite` 项目），一个应用、一个桌面入口。
+并入自建的通用下载器（更早的独立项目），一个应用、一个桌面入口。
 
 ### 新增
 
@@ -290,7 +305,7 @@ Windows 安装包 / 便携版和 Linux AppImage 的构建链路，两端都能�
 - **课程登录态管理**：设置里的「导入 cookies 文件」/「在浏览器里登录一次」，
   对应 `GET /api/course/auth`、`POST /api/course/cookies/import`、
   `POST /api/course/login`
-- 数据目录统一到 `%APPDATA%\xiaoe-dl`：`settings.json` / `tasks.json` /
+- 数据目录统一到 `%APPDATA%\ocemind`：`settings.json` / `tasks.json` /
   `config.json`（Tk 仍读它）/ `cookies.txt` / `app.log`
 - `run.bat`（带控制台）、`tests/manual/`（联网测试脚本）
 
@@ -311,7 +326,7 @@ Windows 安装包 / 便携版和 Linux AppImage 的构建链路，两端都能�
 ### 已知限制
 
 - 合并阶段不可打断：ffmpeg 一旦起跑只能等它结束，暂停在合并完成后才生效
-- 旧的 CLI 临时分片目录（`%TEMP%\xiaoe_<alive 后8位>`）不会被新任务复用，
+- 旧的 CLI 临时分片目录（`%TEMP%\ocemind_<alive 后8位>`）不会被新任务复用，
   一次性重下
 
 ## [1.0.1] - 2026-10-15
@@ -358,7 +373,7 @@ Windows 安装包 / 便携版和 Linux AppImage 的构建链路，两端都能�
 
 - **`tools/diagnose.py`** —— 分阶段链路诊断。把整条链路拆成 7 段依次探测，
   直接报出**首个失败阶段**。网站改版时先跑它找断点，不用再从零逆向
-- **`xiaoe_dl/auth.py`** —— 登录态双模式。手动导入 cookies.txt 之外，
+- **`ocemind/auth.py`** —— 登录态双模式。手动导入 cookies.txt 之外，
   还能开真浏览器让你登一次（扫码 / 手机验证码 / 密码都行，程序不假定登录方式）
 - **`tools/make_launcher.py`** —— 在桌面建/修/删源码启动器
 - **`tools/build_exe.py`** —— 一条命令打包并部署 exe
@@ -370,8 +385,8 @@ Windows 安装包 / 便携版和 Linux AppImage 的构建链路，两端都能�
 
 ### 变更
 
-- **包化为 `xiaoe_dl/`**。`download.py` / `gui.py` / `xiaoe_crypto.py` /
-  `xiaoe_cookies.py` 分别改名为 `core.py` / `gui.py` / `crypto.py` / `cookies.py`。
+- **包化为 `ocemind/`**。`download.py` / `gui.py` / `ocemind_crypto.py` /
+  `ocemind_cookies.py` 分别改名为 `core.py` / `gui.py` / `crypto.py` / `cookies.py`。
   **不保留旧名兼容**（只有一个使用者，README 同步改了）
 - cookie 一律按域过滤后再拼 `Cookie` 头。多个店铺子域会产生多条同名
   `ko_token`，全拼进一个头服务端行为未定义
@@ -382,13 +397,13 @@ Windows 安装包 / 便携版和 Linux AppImage 的构建链路，两端都能�
 - **`find_ko_token` 的跨账号凭证泄漏**：域过滤后没找到时，原实现会回退到
   「所有候选」，等于把 A 店铺的登录态发给 B 店铺。已删掉这个回退，并加了回归测试
 - **`grab_playlist` 里的静默 import**：`sys.path.insert` + `try/except` 包着
-  `import xiaoe_crypto`，模块名变了也不报错，只会静默少一个功能。改成正常导入
+  `import ocemind_crypto`，模块名变了也不报错，只会静默少一个功能。改成正常导入
 - **`cookie_candidates()` 的路径漂移**：包化后 `dirname(__file__)` 从项目根变成
   了包目录，「cookies.txt 放在 exe 旁边」的语义会悄悄失效
 - **`crypto.decode()` 的默认密钥**：原来不传 key 时会静默用 JS 里的兜底值
   `appbgzjnopv1917`，解出乱码但不报错。现在 key 是必填参数
 - 源码运行时 `python run.py --url ...` 的输出以前全进了
-  `%TEMP%\xiaoe-cli.log`，控制台什么都看不到。改为同时写控制台和日志
+  `%TEMP%\ocemind-cli.log`，控制台什么都看不到。改为同时写控制台和日志
 
 ### 已知问题
 
@@ -399,7 +414,7 @@ Windows 安装包 / 便携版和 Linux AppImage 的构建链路，两端都能�
   旧的 exe 保留为「旧版备用」作兜底
 - `crypto.decode()` 的 round-trip 测试只能证明**解码器相对自身自洽**，
   不能证明对真实混淆样本解对——手上已无真样本（探索期的 `_probe.bin` 已清理）。
-  真遇到 `[xiaoe]` 响应时用 `XIAOE_DUMP_RAW=<路径>` 落一份样本
+  真遇到 `[xiaoe]` 响应时用 `OCEMIND_DUMP_RAW=<路径>` 落一份样本
 
 ### 未做（明确排除）
 

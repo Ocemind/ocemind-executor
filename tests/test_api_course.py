@@ -8,10 +8,10 @@
 import pytest
 from fastapi import HTTPException
 
-from xiaoe_dl import auth, paths
-from xiaoe_dl.downloader import api as api_mod
-from xiaoe_dl.downloader.config import Config
-from xiaoe_dl.downloader.manager import TaskManager
+from ocemind import auth, paths
+from ocemind.downloader import api as api_mod
+from ocemind.downloader.config import Config
+from ocemind.downloader.manager import TaskManager
 
 URL = "https://app1.h5.xiaoeknow.com/p/course/video/l_abcdef1234567890abcd"
 COOKIE_TEXT = "\n".join([
@@ -22,7 +22,7 @@ COOKIE_TEXT = "\n".join([
 
 @pytest.fixture
 def app(tmp_path, monkeypatch):
-    monkeypatch.setenv("XIAOE_DL_HOME", str(tmp_path / "appdata"))
+    monkeypatch.setenv("OCEMIND_HOME", str(tmp_path / "appdata"))
     cfg = Config(home=tmp_path / "home", legacy_home=tmp_path / "none")
     mgr = TaskManager(cfg, start_scheduler=False)
     yield api_mod.create_app(cfg, mgr)

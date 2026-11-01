@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from xiaoe_dl import cookies as C
+from ocemind import cookies as C
 from helpers import APP_ID, DAY, NOW, OTHER_APP, cookie_line
 
 

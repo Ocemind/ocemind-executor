@@ -17,14 +17,14 @@ def calls(monkeypatch):
     """把三条启动路径换成记录器。"""
     record = {}
 
-    desktop = types.ModuleType("xiaoe_dl.desktop")
+    desktop = types.ModuleType("ocemind.desktop")
     desktop.main = lambda force_browser=False: record.setdefault(
         "desktop", force_browser)
-    monkeypatch.setitem(sys.modules, "xiaoe_dl.desktop", desktop)
+    monkeypatch.setitem(sys.modules, "ocemind.desktop", desktop)
 
-    gui = types.ModuleType("xiaoe_dl.gui")
+    gui = types.ModuleType("ocemind.gui")
     gui.main_gui = lambda: record.setdefault("tk", True)
-    monkeypatch.setitem(sys.modules, "xiaoe_dl.gui", gui)
+    monkeypatch.setitem(sys.modules, "ocemind.gui", gui)
 
     monkeypatch.setattr(run, "_run_cli", lambda: record.setdefault("cli", True))
     return record

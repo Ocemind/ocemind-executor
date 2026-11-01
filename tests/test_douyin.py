@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from xiaoe_dl import douyin
-from xiaoe_dl.links import first_url, looks_like_url
+from ocemind import douyin
+from ocemind.links import first_url, looks_like_url
 
 SHARE_TEXT = ("7.61 复制打开抖音，看看【高百烈开源版的作品】本体论到底是什么？   "
               "https://v.douyin.com/vet3Ygfcgos/ lCU:/ :1pm 01/23 Y@m.Dh")

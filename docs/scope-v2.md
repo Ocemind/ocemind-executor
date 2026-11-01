@@ -48,7 +48,7 @@ UI 上要明写原因，别让人以为是 bug。
 
 **选第三种。**
 
-- 账号目录：`%APPDATA%\xiaoe-dl\profiles\<platform>-<label>\`
+- 账号目录：`%APPDATA%\ocemind\profiles\<platform>-<label>\`
 - cookie / 缓存 / localStorage 由 Chromium 自己物理隔离——这就是"独立隔离环境"，
   **不做指纹伪造**（那是矩阵号防关联用的，个人运维不需要，也不该做）
 - 登录一次，会话由浏览器自己维持，行为和日常上网完全一致
@@ -185,7 +185,7 @@ POST /api/publish/{job_id}/approve
 ## 6. 目录结构与工作量
 
 ```
-xiaoe_dl/
+ocemind/
 ├── accounts/
 │   ├── store.py        # 账号与状态持久化            ~120 行
 │   ├── browser.py      # 拉起/关闭 Edge profile      ~150 行

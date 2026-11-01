@@ -6,12 +6,12 @@ import threading
 import time
 from pathlib import Path
 
-HOME = Path(tempfile.mkdtemp(prefix="tdmlite-home-"))
-os.environ["XIAOE_DL_HOME"] = str(HOME)
+HOME = Path(tempfile.mkdtemp(prefix="ocemind-home-"))
+os.environ["OCEMIND_HOME"] = str(HOME)
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from xiaoe_dl.downloader.config import Config  # noqa: E402
-from xiaoe_dl.downloader.ytdlp_engine import VideoDownloader  # noqa: E402
+from ocemind.downloader.config import Config  # noqa: E402
+from ocemind.downloader.ytdlp_engine import VideoDownloader  # noqa: E402
 
 URL = "https://www.w3schools.com/html/mov_bbb.mp4"
 SIZE = 788493
@@ -21,7 +21,7 @@ def main() -> int:
     cfg = Config()
     cfg.update({"maxRateKB": 120})  # 约 6.5 秒，足够中途停
 
-    out = Path(tempfile.mkdtemp(prefix="tdmlite-vp-"))
+    out = Path(tempfile.mkdtemp(prefix="ocemind-vp-"))
     dl = VideoDownloader(cfg)
     box = {}
     th = threading.Thread(target=lambda: box.update(dl.run(URL, out, 720)), daemon=True)

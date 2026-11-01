@@ -24,7 +24,7 @@
 - 平台视频会自动选择最佳音视频并合并
 - 保存目录会记住上次用的
 - 需要 `ffmpeg`（已在系统 PATH 上）；找不到会去常见安装位置兜底找
-- 所有数据在一个目录：`%APPDATA%\xiaoe-dl\`
+- 所有数据在一个目录：`%APPDATA%\ocemind\`
   （`settings.json` 设置、`tasks.json` 任务列表、`cookies.txt` 登录态、`app.log`）
 
 默认是**网页界面套在原生窗口里**（pywebview）。两个备用入口：
@@ -93,7 +93,7 @@ python run.py --list urls.txt --dir "D:\视频\交易训练营"
 |----------|------|------|
 | 课程平台课程 | `core.run_one`（本仓库核心） | 取明文 m3u8 → 并发下分片 → ffmpeg 合并 |
 | 平台视频 | yt-dlp | 支持 cookie、代理、清晰度选择、播放列表 |
-| 任意直链 | 自研 Range 分片 | 断点续传（`.tdmpart` + `.tdmlite.json`）、限速、多线程 |
+| 任意直链 | 自研 Range 分片 | 断点续传（`.ocemind.part` + `.ocemind.json`）、限速、多线程 |
 
 yt-dlp 默认用 `python -m yt_dlp` 而不是 `yt-dlp.exe`：pip 生成的 exe 没有签名，
 在这台机器上会被**智能应用控制**拦掉；`python.exe` 是签过名的，跑模块没事。
@@ -150,13 +150,13 @@ yt-dlp 默认用 `python -m yt_dlp` 而不是 `yt-dlp.exe`：pip 生成的 exe �
 
 ### 存在哪
 
-规范位置：`%APPDATA%\xiaoe-dl\cookies.txt`
-（即 `C:\Users\Ocemind\AppData\Roaming\xiaoe-dl\cookies.txt`）
+规范位置：`%APPDATA%\ocemind\cookies.txt`
+（即 `C:\Users\Ocemind\AppData\Roaming\ocemind\cookies.txt`）
 
 查找顺序：
 
 1. `--cookies` 显式指定
-2. `%APPDATA%\xiaoe-dl\cookies.txt` ← 规范位置
+2. `%APPDATA%\ocemind\cookies.txt` ← 规范位置
 3. 脚本/exe 同目录的 `cookies.txt`（便携场景）
 4. `D:\视频\cookies.txt`（老位置，仅兼容）
 
@@ -185,7 +185,7 @@ cookies.txt（或 cookies.json）覆盖到规范位置，不用自己去翻 AppD
 |------|------|
 | 图形界面 | 粘贴课程链接后点探测卡片上的「登录一次」；或设置里的「在浏览器里登录一次」 |
 | 命令行 | `python run.py --url "<课程链接>" --login` |
-| 单独登录 | `python -m xiaoe_dl.auth --login --app-id <app_id> --alive-id <alive_id>` |
+| 单独登录 | `python -m ocemind.auth --login --app-id <app_id> --alive-id <alive_id>` |
 
 **队列里的课程任务绝不会自己弹浏览器**（跑到一半弹窗对批量任务就是灾难）。
 需要登录时由你显式点一下，登录窗口在后台会话里打开。
@@ -252,7 +252,7 @@ python tools/diagnose.py --url "<课程链接>"
 | **视频时长明显偏长**（比如 66 分钟变成 15 小时） | 区间分片没按 `Range` 取，每片下回了整个文件 | 1.0.1 已修。先看 `diagnose` 第 5 段报的是哪种寻址 |
 | exe 双击没反应 | 智能应用控制拦截 | 改用桌面的「课程下载器」快捷方式 |
 | 双击图标没窗口，浏览器却开了 | 没装 WebView2 / pywebview | 正常降级，照常使用；想用原生窗口就装 WebView2 |
-| 窗口一闪就没了 | 启动报错 | 用 `run.bat` 看控制台，或看 `%APPDATA%\xiaoe-dl\app.log` |
+| 窗口一闪就没了 | 启动报错 | 用 `run.bat` 看控制台，或看 `%APPDATA%\ocemind\app.log` |
 
 ## 走过的弯路（已放弃，别再试）
 
@@ -264,7 +264,7 @@ python tools/diagnose.py --url "<课程链接>"
   「再起一个带调试端口的 Chrome」根本起不来
 - 对课程页 URL 直接跑 yt-dlp：Unsupported URL
 - F12 抓包：页面有反调试，直接 `Paused in debugger`
-- 硬解 `confusion_index` 混淆播放列表：算法逆向出来了（见 `xiaoe_dl/crypto.py`，确实能用），
+- 硬解 `confusion_index` 混淆播放列表：算法逆向出来了（见 `ocemind/crypto.py`，确实能用），
   **但没必要** —— `playlist_eof.m3u8` 是明文的
 - 硬解 `url` 字段的 base64 字符替换：同样没必要，走 `ext.param` 就行
 
@@ -276,16 +276,16 @@ python tools/diagnose.py --url "<课程链接>"
 |------|------|
 | `run.py` | **唯一入口**。无参数起网页壳，`--web` 浏览器，`--tk` 旧 Tk，其余参数走命令行 |
 | `run.bat` | 带控制台的启动入口（排查问题用） |
-| `xiaoe_dl/core.py` | 课程核心管线（取流、拼分片、并发下载、ffmpeg 合并） |
-| `xiaoe_dl/desktop.py` | 桌面壳：DPI、单实例、uvicorn、pywebview，失败退回浏览器 |
-| `xiaoe_dl/downloader/` | 任务队列与三种引擎（yt-dlp / Range 分片 / 课程） |
-| `xiaoe_dl/web/` | 网页界面（原生 HTML + CSS + JS，无构建步骤） |
-| `xiaoe_dl/gui.py` | 旧的 Tk 界面（`--tk`） |
-| `xiaoe_dl/cli.py` | 命令行参数解析 |
-| `xiaoe_dl/cookies.py` | cookie 文件读取、按域过滤、登录态有效期 |
-| `xiaoe_dl/auth.py` | 手动导入 / Playwright 自动登录 |
-| `xiaoe_dl/paths.py` | 路径与外部依赖（ffmpeg）定位 |
-| `xiaoe_dl/crypto.py` | `[xiaoe]` 混淆播放列表解码器（备用，主流程用不到） |
+| `ocemind/core.py` | 课程核心管线（取流、拼分片、并发下载、ffmpeg 合并） |
+| `ocemind/desktop.py` | 桌面壳：DPI、单实例、uvicorn、pywebview，失败退回浏览器 |
+| `ocemind/downloader/` | 任务队列与三种引擎（yt-dlp / Range 分片 / 课程） |
+| `ocemind/web/` | 网页界面（原生 HTML + CSS + JS，无构建步骤） |
+| `ocemind/gui.py` | 旧的 Tk 界面（`--tk`） |
+| `ocemind/cli.py` | 命令行参数解析 |
+| `ocemind/cookies.py` | cookie 文件读取、按域过滤、登录态有效期 |
+| `ocemind/auth.py` | 手动导入 / Playwright 自动登录 |
+| `ocemind/paths.py` | 路径与外部依赖（ffmpeg）定位 |
+| `ocemind/crypto.py` | `[xiaoe]` 混淆播放列表解码器（备用，主流程用不到） |
 | `tools/diagnose.py` | **分阶段链路诊断** —— 网站改版时先跑这个找断点 |
 | `tools/make_launcher.py` | 在桌面建/修启动器 |
 | `tools/build_exe.py` | 一条命令打包并部署 exe（智能应用控制下会被拦，见上文） |

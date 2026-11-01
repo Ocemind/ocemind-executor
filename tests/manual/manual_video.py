@@ -5,8 +5,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from xiaoe_dl.downloader.config import Config  # noqa: E402
-from xiaoe_dl.downloader.ytdlp_engine import VideoDownloader, probe  # noqa: E402
+from ocemind.downloader.config import Config  # noqa: E402
+from ocemind.downloader.ytdlp_engine import VideoDownloader, probe  # noqa: E402
 
 URL = "https://www.w3schools.com/html/mov_bbb.mp4"
 
@@ -17,7 +17,7 @@ def main() -> int:
     print("probe:", {k: info.get(k) for k in ("ok", "title", "extractor", "heights", "duration")})
     assert info["ok"], info
 
-    tmp = Path(tempfile.mkdtemp(prefix="tdmlite-video-"))
+    tmp = Path(tempfile.mkdtemp(prefix="ocemind-video-"))
     events = []
 
     def on_progress(p):
