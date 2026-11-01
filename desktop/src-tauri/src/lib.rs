@@ -398,6 +398,95 @@ fn open_url(url: String) -> Result<(), String> {
     opener::open(url).map_err(|e| e.to_string())
 }
 
+// ---------------------------------------------------------------- 代理
+
+/// 设置目录，口径和 `ocemind/paths.py` 的 `app_dir()` 保持一致。
+fn settings_dir() -> Option<PathBuf> {
+    if let Some(root) = portable_data_dir() {
+        return Some(root);
+    }
+    if let Some(home) = std::env::var_os("OCEMIND_HOME") {
+        if !home.is_empty() {
+            return Some(PathBuf::from(home));
+        }
+    }
+    std::env::var_os("APPDATA")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(|base| PathBuf::from(base).join("ocemind"))
+}
+
+fn json_text(value: Option<&serde_json::Value>) -> String {
+    match value {
+        Some(serde_json::Value::String(text)) => text.trim().to_string(),
+        Some(serde_json::Value::Number(num)) => num.to_string(),
+        _ => String::new(),
+    }
+}
+
+/// 用户名密码可能带 @ / : / 中文，进 URL 前要先转义。
+fn percent(text: &str) -> String {
+    let mut out = String::new();
+    for byte in text.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char)
+            }
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
+}
+
+/// 让查更新 / 下载安装包也走设置里那条代理。
+///
+/// updater 底层是 reqwest，只认环境变量和系统代理，没有运行时接口；所以在
+/// 这两个命令里把设置翻译成 `HTTPS_PROXY`。放在命令里而不是启动时，是为了
+/// 不把 sidecar 一起带进代理——它有自己的一套 `--proxy` 参数。
+///
+/// 代理类型写 socks5 的，这里用 `socks5h`：DNS 交给代理解析，本机解析
+/// github.com 在很多网络里是被污染的。日志只记 scheme 和 host:port，
+/// 带密码的完整 URL 永远不进日志。
+fn apply_proxy_env() {
+    let Some(dir) = settings_dir() else { return };
+    let Ok(text) = std::fs::read_to_string(dir.join("settings.json")) else {
+        return;
+    };
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return;
+    };
+    if !json.get("proxyEnabled").and_then(|v| v.as_bool()).unwrap_or(false) {
+        return;
+    }
+    // 用户自己在环境里设过代理，以那个为准
+    for key in ["HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"] {
+        if std::env::var_os(key).is_some() {
+            return;
+        }
+    }
+
+    let host = json_text(json.get("proxyHost"));
+    if host.is_empty() {
+        return;
+    }
+    let kind = json_text(json.get("proxyType"));
+    let scheme = if kind.starts_with("socks") { "socks5h" } else { "http" };
+    let port = json_text(json.get("proxyPort"));
+    let port = if port.is_empty() { String::new() } else { format!(":{port}") };
+    let user = json_text(json.get("proxyUser"));
+    let auth = if user.is_empty() {
+        String::new()
+    } else {
+        format!("{}:{}@", percent(&user), percent(&json_text(json.get("proxyPass"))))
+    };
+    let url = format!("{scheme}://{auth}{host}{port}");
+
+    log::info!("查更新走代理 {scheme}://{host}{port}");
+    for key in ["HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY"] {
+        std::env::set_var(key, &url);
+    }
+    std::env::set_var("NO_PROXY", "127.0.0.1,localhost,::1");
+}
+
 // ---------------------------------------------------------------- 自动更新
 
 /// 仓库是私有的，release 匿名读不到，所以「查更新」和「下载安装包」
@@ -423,6 +512,7 @@ fn updater_plugin(
 /// GitHub Actions 用私钥签名，本地明文私钥不进仓库。
 #[tauri::command]
 async fn check_update(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    apply_proxy_env();
     let updater = app.updater().map_err(|e| e.to_string())?;
     let update = updater.check().await.map_err(|e| e.to_string())?;
     Ok(update.map(|u| u.version))
@@ -433,6 +523,7 @@ async fn check_update(app: tauri::AppHandle) -> Result<Option<String>, String> {
 /// 平台兜底。失败时把错误原样交给界面显示。
 #[tauri::command]
 async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
+    apply_proxy_env();
     let updater = app.updater().map_err(|e| e.to_string())?;
     let update = updater
         .check()

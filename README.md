@@ -426,7 +426,7 @@ API 里也禁止了 Agent 直接提交 `publish.browser`（403）。
 | `siliconflowKey` 等 | 用云端转写 / OCR / 生图 / TTS / 克隆时（每家一个字段） |
 | `customBaseUrl` | 用别的 OpenAI 兼容服务时 |
 | `monthlyBudget` | 想给付费能力封顶时（默认 100 元/月，本地任务不计） |
-| `proxy` | 下 YouTube / X，或发布测试时 |
+| `proxy` | 下 YouTube / X、发布测试，以及「检查更新」（GitHub 直连不通时）|
 | `chromePath` | Chrome 不在默认位置时 |
 
 数据都在一个目录：

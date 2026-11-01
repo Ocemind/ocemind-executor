@@ -2498,11 +2498,12 @@ dependencies = [
 
 [[package]]
 name = "ocemind-desktop"
-version = "2.3.3"
+version = "2.4.0"
 dependencies = [
  "libc",
  "log",
  "opener",
+ "reqwest",
  "serde",
  "serde_json",
  "tauri",

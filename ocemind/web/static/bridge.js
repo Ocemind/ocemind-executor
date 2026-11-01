@@ -144,5 +144,11 @@
     setTimeout(function () {
       check(true);
     }, 3000);
+
+    /* 应用常常一开就是一整天，只在启动时查一次等于不查。每 6 小时静默
+       补查一次；正在下载 / 装着的时候不打扰，装完进程就重启了。 */
+    setInterval(function () {
+      if (state === "idle" || state === "error" || state === "manual") check(true);
+    }, 6 * 60 * 60 * 1000);
   }
 })();
