@@ -7,14 +7,10 @@
 
 ### 变更
 
-- **包名与数据目录统一到 `ocemind`**：Python 包 `xiaoe_dl/` 改名 `ocemind/`，
-  数据目录从 `%APPDATA%\xiaoe-dl` 改为 `%APPDATA%\ocemind`。升级后第一次启动
-  会把旧目录整体改名迁移，设置、任务、浏览器登录态跟着走；旧版本还在运行、
-  目录被占用时不动，继续用旧目录，绝不出现「配置全丢」
-- **环境变量统一**：`XIAOE_DL_HOME` / `XIAOE_DL_LOCAL_HOME` / `XIAOE_DUMP_RAW`
-  改为 `OCEMIND_HOME` / `OCEMIND_LOCAL_HOME` / `OCEMIND_DUMP_RAW`
-- **下载中间文件后缀**：`.tdmpart` / `.tdmlite.json` 改为 `.ocemind.part` /
-  `.ocemind.json`；旧后缀仍然认，没下完的任务能接着续传
+- **包名与数据目录统一到 `ocemind`**：Python 包为 `ocemind/`，数据目录为
+  `%APPDATA%\ocemind`（浏览器 profile 在 `%LOCALAPPDATA%\ocemind`）
+- **环境变量**：`OCEMIND_HOME` / `OCEMIND_LOCAL_HOME` / `OCEMIND_DUMP_RAW`
+- **下载中间文件后缀**：`.ocemind.part` + `.ocemind.json`
 - 文档、注释、构建脚本里的旧品牌字样一并清掉。接口域名 `xiaoeknow.com`
   是站方的，保持原样
 

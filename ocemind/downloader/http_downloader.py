@@ -67,12 +67,9 @@ def sanitize_filename(name: str) -> str:
 
 
 class SegmentedDownload:
-    #: 中间文件后缀。旧版本用的是 `.tdmpart` / `.tdmlite.json`，改名后旧任务
-    #: 仍然按原后缀续传（见下方 `_pick_paths`），不然正在下的东西会从零开始。
+    #: 下载中间文件后缀：数据分片 / 续传状态。
     PART_SUFFIX = ".ocemind.part"
     STATE_SUFFIX = ".ocemind.json"
-    LEGACY_PART_SUFFIX = ".tdmpart"
-    LEGACY_STATE_SUFFIX = ".tdmlite.json"
 
     def __init__(
         self,
@@ -108,21 +105,8 @@ class SegmentedDownload:
         self._part_done: dict[int, int] = {}
         self.session = self._make_session()
 
-        self.part_path, self.state_path = self._pick_paths()
-
-    def _pick_paths(self) -> tuple[Path, Path]:
-        """中间文件路径。旧版留下的同名前缀文件优先沿用，续传才不会断。"""
-        def under(suffix):
-            return self.dest.parent / (self.dest.name + suffix)
-
-        part, state = under(self.PART_SUFFIX), under(self.STATE_SUFFIX)
-        legacy_part, legacy_state = (under(self.LEGACY_PART_SUFFIX),
-                                     under(self.LEGACY_STATE_SUFFIX))
-        if state.exists() or part.exists():
-            return part, state
-        if legacy_state.exists() or legacy_part.exists():
-            return legacy_part, legacy_state
-        return part, state
+        self.part_path = self.dest.parent / (self.dest.name + self.PART_SUFFIX)
+        self.state_path = self.dest.parent / (self.dest.name + self.STATE_SUFFIX)
 
     # ---------- 基础设施 ----------
 

@@ -30,7 +30,7 @@ def home(tmp_path: Path) -> Path:
 
 @pytest.fixture()
 def cfg(home: Path) -> Config:
-    return Config(home, legacy_home=home)
+    return Config(home)
 
 
 # ---------------------------------------------------------------- 注册表

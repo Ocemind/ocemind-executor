@@ -19,7 +19,7 @@ ALIVE = "l_abcdef1234567890abcd"
 
 @pytest.fixture
 def cfg(tmp_path):
-    return Config(home=tmp_path, legacy_home=tmp_path / "none")
+    return Config(home=tmp_path)
 
 
 def _cookies(monkeypatch):

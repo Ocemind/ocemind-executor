@@ -23,7 +23,7 @@ COOKIE_TEXT = "\n".join([
 @pytest.fixture
 def app(tmp_path, monkeypatch):
     monkeypatch.setenv("OCEMIND_HOME", str(tmp_path / "appdata"))
-    cfg = Config(home=tmp_path / "home", legacy_home=tmp_path / "none")
+    cfg = Config(home=tmp_path / "home")
     mgr = TaskManager(cfg, start_scheduler=False)
     yield api_mod.create_app(cfg, mgr)
     mgr.shutdown()

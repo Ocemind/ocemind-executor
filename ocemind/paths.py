@@ -9,33 +9,9 @@ import shutil
 import sys
 
 
-#: 2.3.x 及以前的数据目录名。只在迁移时用得到：升级后第一次启动把里面的
-#: 设置、任务、执行器数据库、浏览器 profile 整体搬到新目录，否则用户看到的是
-#: 「数据全没了」——旧包已发出去，这个字符串删不掉，只能留在迁移代码里。
-LEGACY_DIR_NAME = "xiaoe-dl"
-
-
 def is_frozen():
     """是不是跑在 PyInstaller 打出来的 exe 里。"""
     return bool(getattr(sys, "frozen", False))
-
-
-def _adopt_legacy_dir(base, name):
-    """旧目录名迁移到 `name`。目标已存在就不动。
-
-    搬不动（升级时旧版本还在跑、目录被占用、跨盘）就**继续用旧目录**：
-    宁可不改名，也不能让用户开机看见一堆空设置。拷贝一半再切过去更糟，
-    所以这里不做 copytree 兜底。
-    """
-    new = os.path.join(base, name)
-    old = os.path.join(base, LEGACY_DIR_NAME)
-    if name == LEGACY_DIR_NAME or os.path.exists(new) or not os.path.isdir(old):
-        return new
-    try:
-        os.rename(old, new)
-    except OSError:
-        return old
-    return new
 
 
 def app_dir():
@@ -47,7 +23,7 @@ def app_dir():
     if override:
         return override
     base = os.environ.get("APPDATA") or os.path.expanduser("~")
-    return _adopt_legacy_dir(base, "ocemind")
+    return os.path.join(base, "ocemind")
 
 
 def local_app_dir():
@@ -63,7 +39,7 @@ def local_app_dir():
     if override:
         return override
     base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
-    return _adopt_legacy_dir(base, "ocemind")
+    return os.path.join(base, "ocemind")
 
 
 def profile_dir():

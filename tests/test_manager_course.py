@@ -15,7 +15,7 @@ URL = "https://app1.h5.xiaoeknow.com/p/course/video/l_abcdef1234567890abcd"
 
 @pytest.fixture
 def cfg(tmp_path):
-    return Config(home=tmp_path / "home", legacy_home=tmp_path / "none")
+    return Config(home=tmp_path / "home")
 
 
 @pytest.fixture

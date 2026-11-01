@@ -648,10 +648,8 @@ class TaskManager:
         filename = task.get("filename") or info.get("filename") or "download.bin"
         candidate = directory / filename
         # 续传时沿用原文件名，避免 _unique_path 生成 (1) 导致分片文件对不上
-        if candidate.exists() or any(
-                Path(str(candidate) + s).exists()
-                for s in (SegmentedDownload.PART_SUFFIX,
-                          SegmentedDownload.LEGACY_PART_SUFFIX)):
+        if candidate.exists() or Path(
+                str(candidate) + SegmentedDownload.PART_SUFFIX).exists():
             dest = candidate
         else:
             dest = _unique_path(directory, filename)
@@ -738,8 +736,6 @@ class TaskManager:
         if name:
             for suffix in (SegmentedDownload.PART_SUFFIX,
                            SegmentedDownload.STATE_SUFFIX,
-                           SegmentedDownload.LEGACY_PART_SUFFIX,
-                           SegmentedDownload.LEGACY_STATE_SUFFIX,
                            ".part", ".ytdl"):
                 try:
                     (directory / (name + suffix)).unlink(missing_ok=True)

@@ -43,8 +43,8 @@ LAUNCHER_NAME = "Ocemind 内容执行器"
 TK_LAUNCHER_NAME = "Ocemind 内容执行器 (Tk)"
 ICON = os.path.join(ROOT, "app.ico")
 #: 早期版本的桌面入口名字里都带「下载器」，建新快捷方式时按后缀顺手清掉，
-#: 免得桌面上摆着几个同功能的图标。不写死旧产品名，仓库里就不留旧品牌字样。
-OLD_LAUNCHER_SUFFIXES = ("下载器.lnk", "下载器 (Tk).lnk", "TDM Lite.lnk")
+#: 免得桌面上摆着几个同功能的图标。
+OLD_LAUNCHER_SUFFIXES = ("下载器.lnk", "下载器 (Tk).lnk")
 FROZEN_NAME = "课程下载器.exe"
 FALLBACK_NAME = "课程下载器（旧版备用）.exe"
 

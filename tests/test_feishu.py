@@ -15,7 +15,7 @@ from ocemind.executor.store import Store
 @pytest.fixture()
 def cfg(tmp_path: Path) -> Config:
     home = tmp_path / "home"
-    cfg = Config(home, legacy_home=home)
+    cfg = Config(home)
     cfg.update({
         "feishuEnabled": True,
         "feishuBaseToken": "apptok",

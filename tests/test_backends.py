@@ -14,7 +14,7 @@ from ocemind.executor import backends
 @pytest.fixture()
 def cfg(tmp_path: Path) -> Config:
     home = tmp_path / "home"
-    return Config(home, legacy_home=home)
+    return Config(home)
 
 
 @pytest.fixture()

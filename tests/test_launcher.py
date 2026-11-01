@@ -14,7 +14,7 @@ import make_launcher  # noqa: E402
 
 def test_remove_old_launchers_only_touches_known_names(tmp_path):
     old_a = tmp_path / "课程下载器.lnk"
-    old_b = tmp_path / "TDM Lite.lnk"
+    old_b = tmp_path / "课程下载器 (Tk).lnk"
     keep = tmp_path / "别的快捷方式.lnk"
     current = tmp_path / f"{make_launcher.LAUNCHER_NAME}.lnk"
     for p in (old_a, old_b, keep, current):

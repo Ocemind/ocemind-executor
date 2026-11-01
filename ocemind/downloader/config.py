@@ -9,15 +9,10 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import threading
 from pathlib import Path
 
 from ocemind import paths
-
-#: 合并前那版下载器的数据目录。磁盘上就叫这个名字，只读不写，
-#: 且只在新文件不存在时迁一次。
-LEGACY_HOME_NAME = "TDMLite"
 
 
 def _default_dir() -> str:
@@ -97,70 +92,33 @@ DEFAULT_SETTINGS = {
 class Config:
     """设置读写。路径在构造时确定，方便测试用临时目录隔离。"""
 
-    def __init__(self, home: str | os.PathLike | None = None,
-                 legacy_home: str | os.PathLike | None = None) -> None:
+    def __init__(self, home: str | os.PathLike | None = None) -> None:
         self._lock = threading.RLock()
         self.home = Path(home) if home else Path(paths.app_dir())
         self.settings_path = self.home / "settings.json"
         self.tasks_path = self.home / "tasks.json"
         self.log_path = self.home / "app.log"
-        # 旧 Tk 界面的配置文件，保持 out_dir 同步
+        # Tk 界面的配置文件，保持 out_dir 同步
         self.tk_config_path = self.home / "config.json"
 
-        if legacy_home is not None:
-            self.legacy_home = Path(legacy_home)
-        elif home is None:
-            # 只有用默认数据目录时才去碰真实机器上的旧目录；
-            # 测试传了 home 就绝不读真实环境。
-            base = os.environ.get("APPDATA") or str(Path.home())
-            self.legacy_home = Path(base) / LEGACY_HOME_NAME
-        else:
-            self.legacy_home = None
-
         self.data = dict(DEFAULT_SETTINGS)
-        self._migrate_legacy()
+        self._seed_from_tk_config()
         self.load()
 
-    # ------------------------------------------------------------ 迁移
-    def _migrate_legacy(self) -> None:
-        """把旧版本的配置和 Tk 的 out_dir 接过来。幂等，不删旧文件。"""
+    # ------------------------------------------------------------ 首次初始化
+    def _seed_from_tk_config(self) -> None:
+        """第一次跑时把 Tk 界面记的保存目录接过来。幂等，不覆盖已有设置。"""
         if self.settings_path.exists():
             return
         self.home.mkdir(parents=True, exist_ok=True)
         data = dict(DEFAULT_SETTINGS)
-        explicit_dir = None
-
-        legacy_settings = (self.legacy_home / "settings.json"
-                           if self.legacy_home else None)
-        if legacy_settings and legacy_settings.exists():
-            try:
-                saved = json.loads(legacy_settings.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                saved = {}
-            if isinstance(saved, dict):
-                for key, value in saved.items():
-                    if key in DEFAULT_SETTINGS:
-                        data[key] = value
-                if "defaultDir" in saved:
-                    explicit_dir = saved["defaultDir"]
-
-        if explicit_dir is None:
-            try:
-                tk = json.loads(self.tk_config_path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                tk = {}
-            if isinstance(tk, dict) and tk.get("out_dir"):
-                data["defaultDir"] = tk["out_dir"]
-
+        try:
+            tk = json.loads(self.tk_config_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            tk = {}
+        if isinstance(tk, dict) and tk.get("out_dir"):
+            data["defaultDir"] = tk["out_dir"]
         self._write_settings(data)
-
-        legacy_tasks = (self.legacy_home / "tasks.json"
-                        if self.legacy_home else None)
-        if legacy_tasks and legacy_tasks.exists() and not self.tasks_path.exists():
-            try:
-                shutil.copy2(legacy_tasks, self.tasks_path)
-            except OSError:
-                pass
 
     # ------------------------------------------------------------ 读写
     def _write_settings(self, data: dict) -> None:

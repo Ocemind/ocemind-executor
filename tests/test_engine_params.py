@@ -147,7 +147,7 @@ def test_audio_seconds_measures_wav():
 
 @pytest.mark.skipif(not find_ffmpeg(), reason="本机没有 ffmpeg")
 def test_tts_rejects_empty_clip(tmp_path: Path, monkeypatch):
-    cfg = Config(tmp_path / "home", legacy_home=tmp_path / "home")
+    cfg = Config(tmp_path / "home")
     monkeypatch.setattr(audio_gen.backends, "resolve",
                         lambda *a, **k: {"ready": True, "key": "k",
                                          "base": "https://example.invalid/v1",
@@ -166,7 +166,7 @@ def test_tts_rejects_empty_clip(tmp_path: Path, monkeypatch):
 
 @pytest.mark.skipif(not find_ffmpeg(), reason="本机没有 ffmpeg")
 def test_tts_accepts_normal_clip(tmp_path: Path, monkeypatch):
-    cfg = Config(tmp_path / "home", legacy_home=tmp_path / "home")
+    cfg = Config(tmp_path / "home")
     monkeypatch.setattr(audio_gen.backends, "resolve",
                         lambda *a, **k: {"ready": True, "key": "k",
                                          "base": "https://example.invalid/v1",

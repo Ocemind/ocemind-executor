@@ -86,31 +86,6 @@ def test_app_dir_follows_appdata(monkeypatch):
     assert paths.app_dir() == os.path.join(r"C:\Users\X\AppData\Roaming", "ocemind")
 
 
-def test_legacy_data_dir_is_renamed_on_first_run(monkeypatch, tmp_path):
-    """升级后第一次启动要整体搬目录，否则用户看到的是「设置全没了」。"""
-    base = tmp_path / "appdata"
-    legacy = base / paths.LEGACY_DIR_NAME
-    legacy.mkdir(parents=True)
-    (legacy / "settings.json").write_text("{}", encoding="utf-8")
-    monkeypatch.delenv("OCEMIND_HOME", raising=False)
-    monkeypatch.setenv("APPDATA", str(base))
-    assert paths.app_dir() == str(base / "ocemind")
-    assert (base / "ocemind" / "settings.json").is_file()
-    assert not legacy.exists()
-
-
-def test_existing_new_dir_wins_over_legacy(monkeypatch, tmp_path):
-    """新目录已经在用就别去动旧目录，两份数据并存比改名失败更难查。"""
-    base = tmp_path / "appdata"
-    (base / "ocemind").mkdir(parents=True)
-    legacy = base / paths.LEGACY_DIR_NAME
-    legacy.mkdir(parents=True)
-    monkeypatch.delenv("OCEMIND_HOME", raising=False)
-    monkeypatch.setenv("APPDATA", str(base))
-    assert paths.app_dir() == str(base / "ocemind")
-    assert legacy.is_dir()
-
-
 def test_profile_dir_is_under_localappdata_not_appdata(monkeypatch):
     """profile 放 APPDATA 会被漫游同步几十 MB 缓存，且路径一变 ABE 就失效。"""
     monkeypatch.setenv("APPDATA", r"C:\Users\X\AppData\Roaming")
