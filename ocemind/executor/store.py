@@ -338,12 +338,14 @@ class Store:
         return dict(row) if row else None
 
     def list_artifacts(self, limit: int = 200, project: str = "",
-                       status: str = "") -> list[dict]:
+                       status: str = "", ungrouped: bool = False) -> list[dict]:
         sql = "SELECT * FROM artifacts"
         where, args = [], []
         if project:
             where.append("project=?")
             args.append(project)
+        if ungrouped:
+            where.append("project=''")
         if status == "unsynced":
             where.append("status IN ('local','partial','failed')")
         elif status:

@@ -124,7 +124,8 @@ class Executor:
     # -------------------------------------------------------------- 任务
     def submit(self, capability_id: str, inputs: dict | None = None,
                params: dict | None = None, title: str = "",
-               project: str = "", sequence: str = "") -> dict:
+               project: str = "", sequence: str = "",
+               source: str = "manual", order_id: str = "") -> dict:
         if registry.get(capability_id) is None:
             raise ValueError(f"未知能力: {capability_id}")
         inputs = dict(inputs or {})
@@ -132,7 +133,8 @@ class Executor:
         idem = make_idem(capability_id, inputs, params)
         task = self.manager.add_capability(capability_id, inputs, params,
                                            title=title, idem=idem,
-                                           project=project, sequence=sequence)
+                                           project=project, sequence=sequence,
+                                           source=source, order_id=order_id)
         return self.manager.public(task)
 
     def get_job(self, job_id: str) -> dict | None:
@@ -160,11 +162,38 @@ class Executor:
 
     # -------------------------------------------------------------- 产出
     def artifacts(self, project: str = "", status: str = "",
-                  limit: int = 200) -> dict:
+                  limit: int = 200, ungrouped: bool = False) -> dict:
         return {
-            "artifacts": self.store.list_artifacts(limit, project, status),
+            "artifacts": self.store.list_artifacts(limit, project, status,
+                                                   ungrouped=ungrouped),
             "projects": self.store.projects(),
         }
+
+    def claim_artifacts(self, ids: list[str], project: str,
+                        sequence: str = "") -> dict:
+        """认领：给手动跑出来的产出补上项目和序列。
+
+        人工临时干活时常常没想好归哪个项目，「先干活、后认领」——文件已经
+        在磁盘上，这里只补元数据，不搬文件（搬了老链接和飞书索引都会失效）。
+        """
+        project = (project or "").strip()
+        if not project:
+            raise ValueError("项目不能为空")
+        sequence = (sequence or "").strip()
+        done, missing = 0, []
+        for art_id in ids:
+            art = self.store.get_artifact(art_id)
+            if not art:
+                missing.append(art_id)
+                continue
+            fields = {"project": project}
+            if sequence:
+                fields["sequence"] = sequence
+            self.store.update_artifact(art_id, **fields)
+            done += 1
+        return {"claimed": done, "missing": missing,
+                "artifacts": self.store.list_artifacts(200),
+                "projects": self.store.projects()}
 
     def index_history(self) -> dict:
         """补登记功能上线前完成的任务。产物已经在磁盘上，不重新跑。"""

@@ -71,11 +71,17 @@ class Client:
     def capabilities(self):
         return self.get("/api/v1/capabilities")["capabilities"]
 
-    def submit(self, capability: str, inputs=None, params=None, title=""):
+    def submit(self, capability: str, inputs=None, params=None, title="",
+               source="agent", order_id="", project="", sequence=""):
+        """`source` 只影响产出归属的显示：agent 是工单，manual 是人自己跑。"""
         return self.post("/api/v1/jobs", {"capability": capability,
                                           "inputs": inputs or {},
                                           "params": params or {},
-                                          "title": title})["job"]
+                                          "title": title,
+                                          "source": source,
+                                          "order_id": order_id,
+                                          "project": project,
+                                          "sequence": sequence})["job"]
 
     def job(self, job_id: str):
         return self.get(f"/api/v1/jobs/{job_id}")

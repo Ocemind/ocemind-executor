@@ -194,11 +194,17 @@ class TaskManager:
     def add_capability(self, capability_id: str, inputs: dict | None = None,
                        params: dict | None = None, title: str = "",
                        idem: str = "", project: str = "",
-                       sequence: str = "") -> dict:
+                       sequence: str = "", source: str = "manual",
+                       order_id: str = "") -> dict:
         """加入一个执行器任务（转写/转码/OCR/发布…）。
 
         和三引擎的下载任务共用同一个队列、同一套暂停取消——用户不需要
         知道"这个活儿走的是哪条路"。
+
+        `source` 记任务是谁下的：`manual` 是人在界面点的，`agent` 是 Agent
+        通过 v1 接口下的工单。两边做的事一样，但产出归属不一样——人工临时
+        产出默认不归档，等人在产出页认领；工单产出按工单上的项目直接归位。
+        `order_id` 是 Agent 那边的工单号（可以没有），界面上原样显示。
         """
         from ocemind.executor.engines import registry
 
@@ -246,6 +252,8 @@ class TaskManager:
             "params": params,
             "outputs": [],
             "idem": idem,
+            "source": (source or "manual").strip() or "manual",
+            "order_id": (order_id or "").strip(),
             "project": (project or "").strip(),
             "sequence": (sequence or "").strip(),
             "created_at": _now(),

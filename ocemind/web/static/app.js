@@ -80,6 +80,7 @@ const state = {
   artifacts: [],
   artifactStatus: "all",
   artifactProject: "",
+  claiming: "",   // 正在认领的产出 id（行内展开一个小表单）
   feishu: null,
 };
 
@@ -303,8 +304,15 @@ const SYNC_TEXT = {
 
 async function refreshArtifacts() {
   const query = new URLSearchParams();
-  if (state.artifactStatus !== "all") query.set("status", state.artifactStatus);
-  if (state.artifactProject) query.set("project", state.artifactProject);
+  // 「待认领」是另一个维度：没项目的产出，跟同步状态无关
+  if (state.artifactStatus === "ungrouped") {
+    query.set("ungrouped", "1");   // 待认领 = 没项目，再叠项目筛选只会筛出空
+  } else if (state.artifactStatus !== "all") {
+    query.set("status", state.artifactStatus);
+  }
+  if (state.artifactProject && state.artifactStatus !== "ungrouped") {
+    query.set("project", state.artifactProject);
+  }
   try {
     const data = await api("/api/exec/artifacts?" + query.toString());
     state.artifacts = data.artifacts || [];
@@ -350,6 +358,15 @@ function renderArtifacts() {
       ? `<a class="a-link" href="${esc(a.remote_url)}" target="_blank"
             rel="noopener">打开云文档</a>` : "";
     const error = a.error ? `<div class="a-sub error">${esc(a.error)}</div>` : "";
+    const claimBtn = a.project ? "" :
+      `<button class="btn ghost small a-claim" data-id="${esc(a.id)}">认领</button>`;
+    const claimForm = state.claiming === a.id ? `
+      <div class="claim-bar" data-id="${esc(a.id)}">
+        <input class="claim-proj" list="project-list" placeholder="归到哪个项目">
+        <input class="claim-seq" placeholder="序列（可选）">
+        <button class="btn small claim-ok">归档</button>
+        <button class="btn ghost small claim-cancel">取消</button>
+      </div>` : "";
     return `<div class="artifact">
       <div class="a-glyph">${ARTIFACT_GLYPH[a.file_kind] || "•"}</div>
       <div class="a-main">
@@ -357,10 +374,12 @@ function renderArtifacts() {
         <div class="a-title" title="${esc(a.title)}">${esc(a.title)}</div>
         <div class="a-sub" title="${esc(a.path)}">${esc(a.path)}</div>
         ${error}
+        ${claimForm}
       </div>
       <div class="a-side">
         <span class="a-chip ${esc(status)}">${SYNC_TEXT[status] || status}</span>
         ${remote}
+        ${claimBtn}
         ${status === "synced" ? "" :
           `<button class="btn ghost small a-sync" data-id="${esc(a.id)}">同步</button>`}
       </div>
@@ -477,6 +496,22 @@ async function syncArtifacts(payload) {
   }
 }
 
+async function claimArtifact(id, project, sequence) {
+  const name = (project || "").trim();
+  if (!name) { toast("先填项目名", true); return; }
+  try {
+    await api("/api/exec/artifacts/claim", {
+      method: "POST",
+      body: JSON.stringify({ ids: [id], project: name, sequence: (sequence || "").trim() }),
+    });
+    state.claiming = "";
+    toast(`已归到「${name}」`);
+    await refreshArtifacts();
+  } catch (err) {
+    toast("归档失败：" + err.message, true);
+  }
+}
+
 async function backfillArtifacts() {
   try {
     const res = await api("/api/exec/artifacts/index", { method: "POST" });
@@ -566,13 +601,54 @@ function bindEvents() {
   });
   $("#artifact-project").addEventListener("change", (e) => {
     state.artifactProject = e.target.value;
+    // 选了具体项目，就没必要再卡在「待认领」上——那两件事互斥
+    if (state.artifactProject && state.artifactStatus === "ungrouped") {
+      state.artifactStatus = "all";
+      $$("#artifact-filter button").forEach((b) =>
+        b.classList.toggle("on", b.dataset.status === "all"));
+    }
     refreshArtifacts();
   });
   $("#artifact-sync").addEventListener("click", () => syncArtifacts({}));
   $("#artifact-index").addEventListener("click", backfillArtifacts);
   $("#artifact-list").addEventListener("click", (e) => {
-    const btn = e.target.closest(".a-sync");
-    if (btn) syncArtifacts({ ids: [btn.dataset.id] });
+    const sync = e.target.closest(".a-sync");
+    if (sync) { syncArtifacts({ ids: [sync.dataset.id] }); return; }
+
+    const claim = e.target.closest(".a-claim");
+    if (claim) {
+      state.claiming = claim.dataset.id;
+      renderArtifacts();
+      $(`.claim-bar[data-id="${state.claiming}"] .claim-proj`)?.focus();
+      return;
+    }
+
+    const cancel = e.target.closest(".claim-cancel");
+    if (cancel) {
+      state.claiming = "";
+      renderArtifacts();
+      return;
+    }
+
+    const ok = e.target.closest(".claim-ok");
+    if (ok) {
+      const bar = ok.closest(".claim-bar");
+      claimArtifact(bar.dataset.id,
+        bar.querySelector(".claim-proj").value,
+        bar.querySelector(".claim-seq").value);
+    }
+  });
+
+  $("#artifact-list").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && e.target.closest(".claim-bar")) {
+      const bar = e.target.closest(".claim-bar");
+      claimArtifact(bar.dataset.id,
+        bar.querySelector(".claim-proj").value,
+        bar.querySelector(".claim-seq").value);
+    } else if (e.key === "Escape" && e.target.closest(".claim-bar")) {
+      state.claiming = "";
+      renderArtifacts();
+    }
   });
 
   // ---- 模型接口 ----
@@ -1681,6 +1757,9 @@ function renderMeta(node, t, indeterminate) {
   const add = (text, cls) => { if (text) bits.push(cls ? `<span class="${cls}">${esc(text)}</span>` : `<span>${esc(text)}</span>`); };
 
   add(fmtTime(t.created_at), "when");
+  if (t.source === "agent") {
+    add(t.order_id ? `工单 ${t.order_id}` : "Agent 工单", "order");
+  }
   if (t.project || t.sequence) {
     add([t.project, t.sequence].filter(Boolean).join(" / "), "proj");
   }

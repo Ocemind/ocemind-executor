@@ -90,3 +90,15 @@ def test_text_detection():
     assert artifacts.is_text("a.SRT")
     assert not artifacts.is_text("a.mp4")
     assert artifacts.file_kind("a.docx") == "doc"
+
+
+def test_ungrouped_lists_only_rows_without_project(store, tmp_path):
+    """人工临时跑的东西先落在这儿，等人认领；有项目的别混进来。"""
+    artifacts.index_task(store, make_task(tmp_path, "a.mp4", project="读书会"))
+    loose = make_task(tmp_path, "b.mp4", project="", sequence="", id="task2",
+                      created_at=1_700_000_100)
+    artifacts.index_task(store, loose)
+
+    ungrouped = store.list_artifacts(ungrouped=True)
+    assert [r["title"] for r in ungrouped] == ["b.mp4"]
+    assert len(store.list_artifacts()) == 2

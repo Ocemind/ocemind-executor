@@ -88,8 +88,22 @@ def build_ui_router(executor: Executor) -> APIRouter:
 
     # -------------------------------------------------------------- 产出
     @router.get("/artifacts")
-    def artifacts(project: str = "", status: str = "", limit: int = 200):
-        return executor.artifacts(project=project, status=status, limit=limit)
+    def artifacts(project: str = "", status: str = "", limit: int = 200,
+                  ungrouped: int = 0):
+        return executor.artifacts(project=project, status=status, limit=limit,
+                                  ungrouped=bool(ungrouped))
+
+    @router.post("/artifacts/claim")
+    def claim_artifacts(body: dict = Body(...)):
+        """认领：给人工跑出来的产出补项目 / 序列。"""
+        try:
+            return executor.claim_artifacts(
+                [str(i) for i in (body.get("ids") or [])],
+                str(body.get("project") or ""),
+                str(body.get("sequence") or ""),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @router.post("/artifacts/index")
     def index_history():
@@ -289,7 +303,9 @@ def build_v1_router(executor: Executor) -> APIRouter:
                                            body.get("params") or {},
                                            title=body.get("title") or "",
                                            project=body.get("project") or "",
-                                           sequence=body.get("sequence") or "")}
+                                           sequence=body.get("sequence") or "",
+                                           source=str(body.get("source") or "agent"),
+                                           order_id=str(body.get("order_id") or ""))}
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

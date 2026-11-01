@@ -174,6 +174,48 @@ def test_submit_unknown_capability_rejected(cfg: Config):
         manager.shutdown()
 
 
+def test_submit_records_who_asked(cfg: Config):
+    """谁下的任务要留痕：人工跑的还是 Agent 工单，产出归属不一样。"""
+    manager = TaskManager(cfg, start_scheduler=False)
+    executor = Executor(cfg, manager)
+    try:
+        order = executor.submit("doc.parse", {"path": "/nope.md"}, {},
+                                source="agent", order_id="T-20261101-01")
+        assert order["source"] == "agent"
+        assert order["order_id"] == "T-20261101-01"
+
+        manual = executor.submit("doc.parse", {"path": "/nope2.md"}, {})
+        assert manual["source"] == "manual"
+        assert manual["order_id"] == ""
+    finally:
+        executor.close()
+        manager.shutdown()
+
+
+def test_claim_fills_project_without_moving_files(cfg: Config):
+    manager = TaskManager(cfg, start_scheduler=False)
+    executor = Executor(cfg, manager)
+    try:
+        art = executor.store.add_artifact({
+            "task_id": "t1", "path": "/nope/a.mp4", "title": "a.mp4",
+        })
+        assert [r["id"] for r in executor.store.list_artifacts(ungrouped=True)] == [art["id"]]
+
+        result = executor.claim_artifacts([art["id"]], "读书会", "第 3 期")
+        assert result["claimed"] == 1
+
+        got = executor.store.get_artifact(art["id"])
+        assert (got["project"], got["sequence"]) == ("读书会", "第 3 期")
+        assert got["path"] == "/nope/a.mp4"        # 只补元数据，不搬文件
+        assert executor.store.list_artifacts(ungrouped=True) == []
+
+        with pytest.raises(ValueError):
+            executor.claim_artifacts([art["id"]], "   ")
+    finally:
+        executor.close()
+        manager.shutdown()
+
+
 def test_budget_gate_blocks_paid_job(cfg: Config):
     cfg.update({"monthlyBudget": 1.0})
     manager = TaskManager(cfg, start_scheduler=False)

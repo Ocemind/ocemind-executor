@@ -48,7 +48,8 @@ def cmd_submit(client: Client, args) -> int:
     if args.input:
         key = {"path": "path", "url": "url"}[args.input_kind]
         inputs[key] = args.input
-    job = client.submit(args.capability, inputs, params, title=args.title)
+    job = client.submit(args.capability, inputs, params, title=args.title,
+                        source="manual")
     if args.no_wait:
         _print_job(job, wait=False)
         return 0
@@ -63,7 +64,8 @@ def cmd_download(client: Client, args) -> int:
         params["dir"] = args.dir
     if args.height:
         params["height"] = args.height
-    job = client.submit("download.platform", {"url": args.url}, params)
+    job = client.submit("download.platform", {"url": args.url}, params,
+                        source="manual")
     print(f"已加入队列：[{job['id']}]")
     if args.no_wait:
         return 0
@@ -73,7 +75,7 @@ def cmd_download(client: Client, args) -> int:
 
 def cmd_transcribe(client: Client, args) -> int:
     job = client.submit("transcribe.asr", {"path": args.path},
-                        {"srt": args.srt})
+                        {"srt": args.srt}, source="manual")
     print(f"已加入队列：[{job['id']}]")
     if args.no_wait:
         return 0

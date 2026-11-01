@@ -71,53 +71,72 @@
   var updateBtn = document.getElementById("btn-update");
   var updateLabel = document.getElementById("update-label");
   if (updateBtn && window.__OCEMIND_UPDATER__) {
-    var pending = null; // 启动时查到的版本号，点按钮就不用再查一遍
+    var pending = null;   // 查到的版本号；没有就是已是最新
+    var state = "idle";   // idle | checking | found | installing | error | manual
+    var errText = "";
+    var failures = 0;     // 连续失败次数：第二次就不再假装网络能自己好
+    var RELEASES = "https://github.com/Ocemind/ocemind-executor/releases/latest";
 
     updateBtn.hidden = false;
+
+    /* 所有反馈都写在这颗按钮上：不给用户弹窗，弹窗被吞掉时就成了「点了没反应」。
+       状态只有五种，每种都对应一句话，永远不停在「检查中…」。 */
+    function setState(next, text, title) {
+      state = next;
+      updateLabel.textContent = text;
+      updateLabel.style.fontWeight = next === "found" ? "600" : "";
+      updateBtn.title = title || "";
+      updateBtn.disabled = next === "checking" || next === "installing";
+    }
 
     /* silent=true 是启动时的静默检查：查不到更新、或者网络不通都不打扰用户，
        只在真的有新版本时把「检查更新」换成版本号。 */
     function check(silent) {
-      if (!silent) {
-        updateBtn.disabled = true;
-        updateLabel.textContent = "检查中…";
-      }
+      if (!silent) setState("checking", "检查中…");
       return invoke("check_update").then(function (version) {
+        failures = 0;
         pending = version || null;
-        if (pending) {
-          updateLabel.textContent = "发现新版本 v" + pending;
-          updateLabel.style.fontWeight = "600";
-        } else if (!silent) {
-          updateLabel.textContent = "已是最新";
-        }
+        if (pending) setState("found", "发现新版本 v" + pending + " · 点此安装");
+        else if (!silent) setState("idle", "已是最新", "当前 v" + (window.__OCEMIND_VERSION__ || ""));
+        else setState("idle", "检查更新");
       }).catch(function (err) {
         pending = null;
-        if (silent) return; // 启动时网络不通很常见，别弹窗
-        window.alert("检查更新失败：" + (err && err.message ? err.message : err));
-      }).then(function () {
-        updateBtn.disabled = false;
+        failures += 1;
+        errText = err && err.message ? err.message : String(err);
+        if (silent) {                       // 启动时网络不通很常见，留个重试入口就行
+          setState("idle", "检查更新", errText);
+          return;
+        }
+        /* GitHub 在有些网络里就是连不上，重试多少次都一样。第二次失败就把
+           按钮换成「打开发布页」——浏览器走系统代理，往往反而能打开。 */
+        if (failures >= 2) {
+          setState("manual", "连不上更新源 · 打开发布页", errText);
+        } else {
+          setState("error", "检查失败 · 点此重试", errText);
+        }
       });
     }
 
     function install(version) {
-      if (!window.confirm("发现新版本 " + version + "，现在下载并安装？")) return;
-      updateBtn.disabled = true;
-      updateLabel.textContent = "下载中…";
+      setState("installing", "下载中…");
       invoke("install_update").then(function () {
-        updateLabel.textContent = "正在重启…";
+        setState("installing", "正在重启…");
       }).catch(function (err) {
-        updateLabel.textContent = "发现新版本 v" + version;
-        updateBtn.disabled = false;
-        window.alert("更新失败：" + (err && err.message ? err.message : err));
+        errText = err && err.message ? err.message : String(err);
+        setState("error", "更新失败 · 点此重试", errText);
       });
     }
 
     updateBtn.addEventListener("click", function () {
-      if (pending) {
-        install(pending);
+      if (state === "checking" || state === "installing") return;
+      if (state === "found" && pending) {
+        install(pending);   // 按钮上写着「点此安装」，这一下就是确认
         return;
       }
-      updateLabel.style.fontWeight = "";
+      if (state === "manual") {
+        call("open_url", { url: RELEASES });
+        return;
+      }
       check(false);
     });
 
