@@ -39,7 +39,7 @@
 | `ocemind/downloader/ytdlp_engine.py` | 203 | 子进程封装、进度 JSON 解析、可中断 | 无 |
 | `ocemind/downloader/api.py` | 227 | FastAPI 本地服务 | 无对外契约、无 token |
 | `ocemind/desktop.py` | 187 | pywebview 窗口、单实例互斥、DPI、退浏览器 | 只有"任务/设置"两屏 |
-| `ocemind/downloader/config.py` | 193 | 设置读写、老版本迁移 | 无按能力的设置命名空间 |
+| `ocemind/downloader/config.py` | 193 | 设置读写、Tk 配置同步 | 无按能力的设置命名空间 |
 | `ocemind/web/` | ~41 KB | 任务列表 UI | 无多能力界面 |
 | `tools/make_launcher.py` | 202 | **生成 pythonw 快捷方式绕开 SAC** | 只有 Windows 版 |
 | `tests/` | 16 个 | 离线快速回归 | 需为新能力补 smoke 用例 |
