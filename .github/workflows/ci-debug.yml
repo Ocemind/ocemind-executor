@@ -56,6 +56,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: 构建（只编译，不发版）
+        id: build
         shell: bash
         working-directory: desktop
         env:
@@ -65,17 +66,20 @@ jobs:
           set +e
           npm run tauri build -- --config src-tauri/tauri.release.windows.conf.json \
             > build.log 2>&1
-          echo "exit=$?"
+          code=$?
+          echo "exit=$code"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
           tail -c 200000 build.log > log-tail.txt
+          exit $code
 
       - name: 把日志推回仓库
         if: always()
         shell: bash
-        working-directory: desktop
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/ci-debug-log.txt" \
-            -f message="ci-debug log" \
-            -f branch=ci-debug-log \
-            -f content="$(base64 -w0 log-tail.txt)" || true
+          git config user.name "ci-debug"
+          git config user.email "ci-debug@local"
+          cp desktop/log-tail.txt ci-debug-log.txt
+          git checkout -B ci-debug-log
+          git add ci-debug-log.txt
+          git commit -m "ci-debug log" || true
+          git push --force origin ci-debug-log
