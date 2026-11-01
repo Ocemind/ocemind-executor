@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-小鹅通 confusion_index 混淆播放列表解码器（从播放器 JS 逆向）。
+课程平台 confusion_index 混淆播放列表解码器（从播放器 JS 逆向）。
 
 播放器原代码（js_063.js:4131012 等，多处相同实现）：
     wi = i("cc0f")            // = MD5

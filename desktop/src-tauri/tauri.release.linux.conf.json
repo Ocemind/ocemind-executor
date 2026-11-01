@@ -1,7 +1,7 @@
 {
   "productName": "ocemind",
   "bundle": {
-    "targets": ["appimage", "deb"],
+    "targets": ["appimage"],
     "createUpdaterArtifacts": true,
     "linux": {
       "deb": {

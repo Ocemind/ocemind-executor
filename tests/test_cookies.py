@@ -65,7 +65,7 @@ def test_load_cookies_returns_header_and_objects(make_cookiefile):
 
 # --------------------------------------------------- cookie_header_for_app
 def test_cookie_header_excludes_other_apps_cookies(make_cookiefile):
-    """核心用途：profile 访问过第二个小鹅通账号后，不能把他的 token 发过来。"""
+    """核心用途：profile 访问过第二个课程平台账号后，不能把他的 token 发过来。"""
     _, cookies = C.load_cookies(make_cookiefile())
     header = C.cookie_header_for_app(cookies, APP_ID)
     assert "FAKE_TOKEN_THIS_APP" in header

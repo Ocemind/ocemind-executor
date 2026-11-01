@@ -3,7 +3,7 @@
     "targets": [
       "msi"
     ],
-    "publisher": "TimiHub",
+    "publisher": "Ocemind",
     "createUpdaterArtifacts": true,
     "windows": {
       "wix": {

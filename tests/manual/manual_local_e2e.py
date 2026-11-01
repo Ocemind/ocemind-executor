@@ -107,8 +107,8 @@ class Harness:
     """一套独立的数据目录 + 本进程内的服务。"""
 
     def __init__(self):
-        self.home = tempfile.mkdtemp(prefix="timi_e2e_home_")
-        self.out = tempfile.mkdtemp(prefix="timi_e2e_out_")
+        self.home = tempfile.mkdtemp(prefix="ocemind_e2e_home_")
+        self.out = tempfile.mkdtemp(prefix="ocemind_e2e_out_")
         os.environ["XIAOE_DL_HOME"] = self.home
         self.www_port = free_port()
         self.www = QuietServer(("127.0.0.1", self.www_port), Handler)
@@ -237,11 +237,11 @@ def main():
     results.append(("重启恢复", ok3))
 
     # 4. 同一门课重复排队必须被拦；换目录可以并存
-    # 这里用不启动调度线程的 manager，免得真去连小鹅通（本脚本要求不依赖外网）
+    # 这里用不启动调度线程的 manager，免得真去连课程平台（本脚本要求不依赖外网）
     from xiaoe_dl.downloader.config import Config
     from xiaoe_dl.downloader.manager import TaskManager
 
-    guard = TaskManager(Config(home=tempfile.mkdtemp(prefix="timi_e2e_guard_")),
+    guard = TaskManager(Config(home=tempfile.mkdtemp(prefix="ocemind_e2e_guard_")),
                         start_scheduler=False)
     try:
         course = ("https://app1.h5.xiaoeknow.com/p/course/video/v_x"
@@ -260,7 +260,7 @@ def main():
     results.append(("重复课程保护", ok4))
 
     # 5. 没有回放 ID 的课程页链接：当场拒绝，不空跑
-    guard = TaskManager(Config(home=tempfile.mkdtemp(prefix="timi_e2e_guard2_")),
+    guard = TaskManager(Config(home=tempfile.mkdtemp(prefix="ocemind_e2e_guard2_")),
                         start_scheduler=False)
     try:
         guard.add("https://app1.h5.xiaoeknow.com/p/course/video/v_6190abcd",

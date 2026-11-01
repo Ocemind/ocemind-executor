@@ -169,7 +169,7 @@ def stage_cookie(ctx):
     if tok is None:
         return Result("1-cookie", "", FAIL, detail,
                       "没有有效的 ko_token。它是唯一必需的 cookie，"
-                      "去小鹅通网页逛一圈会自动续期，或重新导入一份 cookies.txt")
+                      "去课程平台网页逛一圈会自动续期，或重新导入一份 cookies.txt")
     ctx["ko_token"] = tok
     return Result("1-cookie", "", PASS, detail)
 
@@ -379,7 +379,7 @@ def render(results, out=sys.stdout):
 
 def main():
     ap = argparse.ArgumentParser(
-        description="小鹅通链路分阶段诊断 —— 改版时先跑这个找断点")
+        description="课程平台链路分阶段诊断 —— 改版时先跑这个找断点")
     ap.add_argument("--url", help="课程链接")
     ap.add_argument("--cookies", help="cookie 文件路径（默认自动找）")
     ap.add_argument("--app-id", help="手工指定 app_id（链接解析不出来时用）")

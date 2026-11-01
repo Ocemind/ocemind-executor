@@ -374,7 +374,7 @@ def get_cookie(*, app_id=None, mode="auto", manual_path=None,
 def _main(argv=None):
     ap = argparse.ArgumentParser(
         prog="python -m xiaoe_dl.auth",
-        description="小鹅通登录态管理（登录一次 / 检查 / 续期）")
+        description="课程平台登录态管理（登录一次 / 检查 / 续期）")
     ap.add_argument("--login", action="store_true", help="打开浏览器登录一次并保存")
     ap.add_argument("--refresh", action="store_true", help="用已有 profile 续一次")
     ap.add_argument("--check", action="store_true", help="只汇报当前登录态，不做任何事")

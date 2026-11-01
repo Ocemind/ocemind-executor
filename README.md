@@ -2,9 +2,9 @@
 
 **下载 → 转写 → 处理 → 发布，一个人、一台机器、一个窗口。**
 
-这个程序是把 **Timi 下载器**（小鹅通课程、平台视频、任意直链）整个包进来，
-再往上加了一层「内容执行」：13 项能力共用同一个任务队列、同一套账号体系、
-同一个 Agent 接口。Timi 原有的功能一个都没删，入口和参数也都没变。
+起点是一个**课程下载器**：给个课程链接、平台视频地址或任意直链，就能出
+MP4。上面再加一层「内容执行」——13 项能力共用同一个任务队列、同一套账号
+体系、同一个 Agent 接口，下载原有的入口和参数一个都没变。
 
 ```
 任务      下载视频、转文字、压片、OCR、配音…… 混在同一张队列里
@@ -109,17 +109,12 @@ debug 构建的壳默认跑源码（`python run.py`），所以本机装了 MSI 
 `OCEMIND_SIDECAR_FROZEN=1`，壳就会去找 exe 旁边的 `ocemind-sidecar.exe`。
 便携包也同理：`python tools/make_portable_desktop.py --profile debug`。
 
-Linux 出 **AppImage + deb**（不出 rpm / Flatpak），在
+Linux 只出 **AppImage**（不出 deb / rpm / Flatpak），在
 `.github/workflows/release.yml` 的 Ubuntu 24.04 job 里构建；想只验证
 构建链路就手动跑 `.github/workflows/desktop.yml`（不打标签）。macOS 暂不做。
 
-两种包的分工：
-
-- **AppImage**：单文件、双击即跑，也是唯一能应用内自更新的形态——Tauri 的
-  updater 在 Linux 只能就地替换 AppImage
-- **deb**：`sudo apt install ./ocemind_2.3.1_amd64.deb`，走系统包管理、菜单项
-  齐全，但装的是只读副本，**没有自更新入口**（`APPIMAGE` 环境变量不存在，
-  侧边栏不显示「检查更新」），升级要重新下 deb 覆盖安装
+选 AppImage 而不是 deb，是因为 Tauri 的 updater 在 Linux 只能就地替换
+AppImage——deb 装的是只读副本，没有应用内自更新入口。
 
 `tauri.linux.conf.json` 里有几处不能省的覆盖：
 
@@ -129,7 +124,7 @@ Linux 出 **AppImage + deb**（不出 rpm / Flatpak），在
   由 `src-tauri/linux/ocemind.desktop` 提供（AppImage 内置的 .desktop
   也取这份模板）
 - `deb.depends` 只写 `ffmpeg`：webkit/gtk 由 Tauri 自动追加，
-  自己再写一遍会重复
+  自己再写一遍会重复（留着是为兼容 deb 构建，AppImage 不用）
 
 AppImage 是单文件，双击即跑，用户数据放在 `~/.local/share/ocemind`。
 Ubuntu 24.04 默认没有 FUSE2，跑之前要 `sudo apt install libfuse2t64`，
@@ -196,7 +191,7 @@ python tools/make_portable.py --out D:\Ocemind
 ```
 
 产出一个**整包拷走**的目录：内置解释器 + 依赖 + 程序 + `启动.bat`，
-对方机器不用装 Python。详见 [docs/timi-downloader.md](docs/timi-downloader.md)。
+对方机器不用装 Python。详见 [docs/downloader.md](docs/downloader.md)。
 
 ---
 
@@ -445,8 +440,8 @@ python -m pytest -q          # 离线，秒级；当前 330 passed, 1 skipped
 
 ## 10. 文档
 
-- [docs/timi-downloader.md](docs/timi-downloader.md) — 小鹅通下载的原理、cookie、排障（Timi 模块全文）
-- [docs/api_chain.md](docs/api_chain.md) — 小鹅通接口链路与改版对照表
+- [docs/downloader.md](docs/downloader.md) — 下载模块的原理、cookie、排障
+- [docs/api_chain.md](docs/api_chain.md) — 课程平台接口链路与改版对照表
 - [docs/scope-v2.md](docs/scope-v2.md) — 能力范围收敛时的判定（历史方案稿）
-- [docs/ocemind-on-timi.md](docs/ocemind-on-timi.md) — 在 Timi 上落地的技术梳理（历史方案稿）
+- [docs/ocemind-integration.md](docs/ocemind-integration.md) — 整合方案的技术梳理（历史方案稿）
 - [CHANGELOG.md](CHANGELOG.md)

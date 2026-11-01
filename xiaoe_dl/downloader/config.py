@@ -45,7 +45,7 @@ DEFAULT_SETTINGS = {
     "ytdlpPath": "",
     "ffmpegPath": "",
     "autoLaunch": False,
-    # 小鹅通课程
+    # 课程平台课程
     "courseWorkers": 24,
     "courseLine": "",            # 空=第 1 条线路，也可填 tx/hw/byte
     "courseKeepTs": False,

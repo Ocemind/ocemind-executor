@@ -13,10 +13,11 @@ import make_launcher  # noqa: E402
 
 
 def test_remove_old_launchers_only_touches_known_names(tmp_path):
-    old_a = tmp_path / make_launcher.OLD_LAUNCHERS[0]
-    old_b = tmp_path / make_launcher.OLD_LAUNCHERS[1]
+    old_a = tmp_path / "课程下载器.lnk"
+    old_b = tmp_path / "TDM Lite.lnk"
     keep = tmp_path / "别的快捷方式.lnk"
-    for p in (old_a, old_b, keep):
+    current = tmp_path / f"{make_launcher.LAUNCHER_NAME}.lnk"
+    for p in (old_a, old_b, keep, current):
         p.write_text("x", encoding="utf-8")
 
     make_launcher.remove_old_launchers(str(tmp_path), out=lambda _m: None)
@@ -24,6 +25,7 @@ def test_remove_old_launchers_only_touches_known_names(tmp_path):
     assert not old_a.exists()
     assert not old_b.exists()
     assert keep.exists()
+    assert current.exists(), "当前入口不能被当成旧快捷方式删掉"
 
 
 def test_remove_old_launchers_is_quiet_when_nothing_to_do(tmp_path):
@@ -34,6 +36,6 @@ def test_remove_old_launchers_is_quiet_when_nothing_to_do(tmp_path):
 
 def test_new_launcher_name_is_ocemind():
     assert make_launcher.LAUNCHER_NAME == "Ocemind 内容执行器"
-    assert make_launcher.ICON.endswith("timi.ico")
-    # 改名前的入口必须在清理名单里，否则桌面上会并存多个同功能图标
-    assert "Timi 下载器.lnk" in make_launcher.OLD_LAUNCHERS
+    assert make_launcher.ICON.endswith("app.ico")
+    # 改名前的入口要能被清理规则命中，否则桌面上会并存多个同功能图标
+    assert "课程下载器.lnk".endswith(make_launcher.OLD_LAUNCHER_SUFFIXES)

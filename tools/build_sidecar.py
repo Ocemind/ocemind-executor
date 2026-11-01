@@ -18,7 +18,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SPEC = os.path.join(ROOT, "ocemind-sidecar.spec")
 BIN_DIR = os.path.join(ROOT, "desktop", "src-tauri", "binaries")
 # 和旧的 exe 打包（build/ dist/）分开，别把已经生成的
-# dist/小鹅通下载器.exe 顺手清掉。
+# dist/课程下载器.exe 顺手清掉。
 WORK_DIR = os.path.join(ROOT, "build-sidecar")
 DIST_DIR = os.path.join(ROOT, "dist-sidecar")
 

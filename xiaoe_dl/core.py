@@ -117,7 +117,7 @@ def parse_course_url(url):
 
 
 def is_course_url(url):
-    """是不是小鹅通课程链接（按域名判断，不看路径）。
+    """是不是课程平台课程链接（按域名判断，不看路径）。
 
     只看域名是刻意的：课程页、h5 页、分享短链都落在 xiaoeknow.com 及其子域，
     而分片 CDN 在 xet.tech / 腾讯云那些地方。反过来若只看 URL 里有没有
@@ -260,7 +260,7 @@ def abs_url(seg, ext):
 def seg_range(seg):
     """分片名里若带 `start`/`end` 字节区间，返回闭区间 `(start, end)`，否则 None。
 
-    这不是标准的 `#EXT-X-BYTERANGE`，是小鹅通自己加在查询串上的。注意
+    这不是标准的 `#EXT-X-BYTERANGE`，是课程平台自己加在查询串上的。注意
     **不能把它们从 URL 里删掉** —— URL 带签名，查询串在签名覆盖范围内。
 
     区间是**两端都含**的：`start=0&end=300235` 对应 300236 字节。
@@ -430,7 +430,7 @@ def run_one(url, app_id, alive_id, cookies, args, index=None, total=None,
     """下一个课程。
 
     `cookies` 是 list[Cookie]（不是拼好的头）：每个课程要按它自己的 app_id
-    挑出对应那份登录态。批量下载多个小鹅通账号的课时，这一步不能省。
+    挑出对应那份登录态。批量下载多个课程平台账号的课时，这一步不能省。
 
     新增参数全部可选，命令行与 `tools/diagnose.py` 的调用方式不受影响：
     `on_progress` 收事件字典（`resolving/title/output/segments/downloading/

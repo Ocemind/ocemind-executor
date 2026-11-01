@@ -21,7 +21,7 @@ ISG 信誉放行可执行文件：老 exe 攒够了信誉所以能跑，但**每
 ----
     python tools/make_launcher.py                  # 建「Ocemind 内容执行器」并清理旧快捷方式
     python tools/make_launcher.py --tk             # 另建一个 Tk 界面入口
-    python tools/make_launcher.py --keep-old       # 不清理小鹅通/TDM Lite 的旧快捷方式
+    python tools/make_launcher.py --keep-old       # 不清理旧版（TDM Lite 等）的快捷方式
     python tools/make_launcher.py --name "下载器"   # 自定义快捷方式名
     python tools/make_launcher.py --remove         # 卸载启动器
 """
@@ -41,14 +41,12 @@ from xiaoe_dl.paths import desktop_dir  # noqa: E402
 
 LAUNCHER_NAME = "Ocemind 内容执行器"
 TK_LAUNCHER_NAME = "Ocemind 内容执行器 (Tk)"
-ICON = os.path.join(ROOT, "timi.ico")
-#: 合并前的两个入口，建新快捷方式时顺手清掉，免得桌面上摆三个同功能的图标
-#: 旧产品落在桌面上的真实文件名。只为迁移清理保留，不再用于界面、文档或新产物。
-_LEGACY_NAME = "小鹅通下载器"
-OLD_LAUNCHERS = (f"{_LEGACY_NAME}.lnk", "TDM Lite.lnk",
-                 "Timi 下载器.lnk", "Timi 下载器 (Tk).lnk")
-FROZEN_NAME = f"{_LEGACY_NAME}.exe"
-FALLBACK_NAME = f"{_LEGACY_NAME}（旧版备用）.exe"
+ICON = os.path.join(ROOT, "app.ico")
+#: 早期版本的桌面入口名字里都带「下载器」，建新快捷方式时按后缀顺手清掉，
+#: 免得桌面上摆着几个同功能的图标。不写死旧产品名，仓库里就不留旧品牌字样。
+OLD_LAUNCHER_SUFFIXES = ("下载器.lnk", "下载器 (Tk).lnk", "TDM Lite.lnk")
+FROZEN_NAME = "课程下载器.exe"
+FALLBACK_NAME = "课程下载器（旧版备用）.exe"
 
 
 def find_pythonw():
@@ -114,11 +112,21 @@ def rename_frozen(desktop, out=print):
 
 
 def remove_old_launchers(desktop, out=print):
-    """删掉合并前的桌面入口。删不掉只提示，不影响新快捷方式。"""
-    for name in OLD_LAUNCHERS:
-        path = os.path.join(desktop, name)
-        if not os.path.exists(path):
+    """删掉合并前的桌面入口。删不掉只提示，不影响新快捷方式。
+
+    按后缀匹配而不是写死文件名：旧产品叫什么不重要，只要还叫「…下载器」。
+    当前入口（`Ocemind 内容执行器`）不在后缀里，不会被误删。
+    """
+    keep = {f"{LAUNCHER_NAME}.lnk", f"{TK_LAUNCHER_NAME}.lnk"}
+    try:
+        names = os.listdir(desktop)
+    except OSError as exc:
+        out(f"[!] 读不到桌面目录：{exc}")
+        return
+    for name in names:
+        if name in keep or not name.endswith(OLD_LAUNCHER_SUFFIXES):
             continue
+        path = os.path.join(desktop, name)
         try:
             os.remove(path)
             out(f"[*] 已清理旧快捷方式：{name}")
@@ -132,7 +140,7 @@ def main():
     ap.add_argument("--name", default="", help="快捷方式名（不含 .lnk）")
     ap.add_argument("--tk", action="store_true", help="建 Tk 界面入口（run.py --tk）")
     ap.add_argument("--keep-old", action="store_true",
-                    help="不清理旧版（小鹅通 / TDM Lite / Timi 下载器）的快捷方式")
+                    help="不清理旧版（TDM Lite 等）的快捷方式")
     ap.add_argument("--no-rename", action="store_true",
                     help="不重命名桌面上现有的旧版 exe")
     ap.add_argument("--remove", action="store_true", help="删除启动器")
@@ -171,7 +179,7 @@ def main():
 
     icon = ICON + ",0" if os.path.isfile(ICON) else None
     if not icon:
-        # 没有 timi.ico 时退回旧 exe 的图标，再不行就用 pythonw 的默认图标
+        # 没有 app.ico 时退回旧 exe 的图标，再不行就用 pythonw 的默认图标
         fallback_exe = os.path.join(desktop, FALLBACK_NAME)
         if not args.no_rename:
             rename_frozen(desktop)

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-小鹅通视频下载器 —— 图形界面
+课程视频下载器 —— 图形界面
 
 双击 exe 打开窗口 -> 粘贴课程链接 -> 点「开始下载」。
 带参数启动时（--url / --list ...）自动切换成命令行模式，方便脚本调用。
@@ -24,7 +24,7 @@ from xiaoe_dl.auth import AuthError
 from xiaoe_dl.cookies import cookie_status, resolve_cookies
 from xiaoe_dl.paths import app_dir, find_ffmpeg, profile_dir
 
-APP_TITLE = "小鹅通视频下载器"
+APP_TITLE = "Ocemind 下载器"
 CONFIG_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")),
                           "xiaoe-dl")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")

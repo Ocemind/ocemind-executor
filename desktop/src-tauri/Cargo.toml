@@ -2,7 +2,7 @@
 name = "ocemind-desktop"
 version = "2.3.1"
 description = "Ocemind 内容执行器桌面壳"
-authors = ["TimiHub"]
+authors = ["Ocemind"]
 edition = "2021"
 rust-version = "1.77.2"
 
