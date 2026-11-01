@@ -36,7 +36,7 @@ a = Analysis(
         # 有 150MB，不塞进 sidecar。需要时在源码环境安装。
         'playwright', 'greenlet', 'pyee',
         # 可选本地引擎（OCR / ASR）体积极大，而且 PyInstaller 只能打
-        # 进当前解释器的版本；它们由「模型与接口」页按需安装到可写目录，
+        # 进当前解释器的版本；它们由设置页「本地引擎」按需安装到可写目录，
         # 不该在分析阶段被扫进来。
         'cv2', 'paddle', 'paddleocr', 'paddlex',
         'torch', 'tensorflow', 'onnxruntime', 'rapidocr_onnxruntime',

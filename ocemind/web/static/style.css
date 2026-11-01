@@ -284,24 +284,6 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round
 .topbar p { margin: 6px 0 0; color: var(--ink-3); font-size: 13px; }
 .topbar-actions { display: flex; align-items: center; gap: 10px; padding-bottom: 2px; }
 
-.budget {
-  display: flex; align-items: baseline; gap: 5px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 5px 12px;
-  font-size: 11.5px;
-  color: var(--ink-faint);
-  white-space: nowrap;
-}
-.budget b {
-  color: var(--ink);
-  font-size: 12.5px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.budget.over b { color: var(--bad); }
-
 .seg {
   display: inline-flex;
   gap: 2px;
@@ -390,17 +372,6 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round
   color: var(--ink);
 }
 .input-shell input::placeholder { color: var(--ink-faint); }
-.in-btn {
-  border: 0;
-  background: transparent;
-  color: var(--ink-3);
-  font-size: 12px;
-  padding: 5px 9px;
-  border-radius: 6px;
-  flex: none;
-}
-.in-btn:hover { background: var(--bg-sunk); color: var(--ink); }
-
 .cap-select {
   border: 1px solid var(--line);
   background: var(--surface);
@@ -744,7 +715,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round
 }
 .browser-type input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
-/* ───────────────────────── 连接 Agent ───────────────────────── */
+/* ───────────────────────── 外部接入 ───────────────────────── */
 
 .connect-grid {
   display: grid;
@@ -1040,7 +1011,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round
 .secure-result .kv { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
 .secure-result .kv b { color: var(--ink); font-weight: 600; }
 
-/* ───────────────────────── 模型与接口 ───────────────────────── */
+/* ───────────────────────── 模型接口 ───────────────────────── */
 
 .models-layout {
   display: grid;
@@ -1146,6 +1117,9 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round
   font-size: 12px;
   color: var(--ink-3);
 }
+/* 用量靠右，别跟输入框挤在一起 */
+.budget-line .spent { margin-left: auto; font-variant-numeric: tabular-nums; }
+.budget-line .spent.over { color: var(--bad); }
 .budget-line input {
   width: 96px;
   border: 1px solid var(--line);
@@ -1376,4 +1350,96 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round
   .toolbar { flex-wrap: wrap; }
   .artifact { flex-wrap: wrap; }
   .a-side { max-width: none; justify-content: flex-start; padding-left: 44px; }
+}
+
+/* ───────────────────────── 接活区：空态 / 动作条 ───────────────────────── */
+
+.add-card { transition: padding .16s ease; }
+.add-card.is-empty { padding: 26px 16px; }
+.add-card.is-empty .add-row { max-width: 720px; margin: 0 auto; }
+.add-card.is-empty .input-shell input { padding: 15px 10px; font-size: 15px; }
+.add-card.is-empty .add-row .btn { align-self: stretch; padding-left: 22px; padding-right: 22px; }
+.add-card.is-empty .add-extra { justify-content: center; margin-top: 14px; }
+
+.verb-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 12px; position: relative; }
+.verb {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  border-radius: 999px;
+  padding: 6px 15px;
+  font-size: 13px;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.verb:hover { border-color: var(--line-strong); color: var(--ink); }
+.verb.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; }
+.verb.more { color: var(--ink-faint); border-style: dashed; }
+.verb-menu {
+  position: absolute; top: 100%; left: 0; margin-top: 6px; z-index: 20;
+  display: flex; flex-wrap: wrap; gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-pop);
+  padding: 10px;
+  max-width: 420px;
+}
+
+.add-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.dest {
+  font-size: 12px; color: var(--ink-faint);
+  max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.proj-pick { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-faint); }
+.proj-pick input {
+  border: 1px solid var(--line); border-radius: 7px; background: var(--surface);
+  padding: 5px 8px; font-size: 12px; color: var(--ink); width: 110px; outline: 0;
+}
+.proj-pick input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.seq-pick input { width: 80px; }
+.add-foot .btn { margin-left: auto; }
+
+.opts-wrap { margin-top: 12px; border-top: 1px solid var(--line-soft); padding-top: 8px; }
+.opts-wrap > summary { cursor: pointer; font-size: 12px; color: var(--ink-faint); list-style: none; user-select: none; }
+.opts-wrap > summary::-webkit-details-marker { display: none; }
+.opts-wrap > summary::before { content: "▸ "; }
+.opts-wrap[open] > summary::before { content: "▾ "; }
+.opts-wrap[open] > summary { color: var(--ink-2); }
+.opts-wrap .add-opts { border-top: 0; margin-top: 10px; padding-top: 0; }
+
+.add-extra { display: flex; align-items: center; justify-content: flex-end; margin-top: 10px; }
+.link-btn { background: none; border: 0; padding: 0; cursor: pointer; color: var(--ink-faint); font-size: 12px; }
+.link-btn:hover { color: var(--accent); }
+
+/* ───────────────────────── 设置页 ───────────────────────── */
+
+.settings-layout {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 14px;
+  align-content: start;
+}
+.set-card { padding: 18px; }
+.set-card .card-head { margin-bottom: 10px; }
+.set-card .limits { margin: 10px 0 0; padding-left: 18px; }
+.set-card .limits li { font-size: 12px; color: var(--ink-3); line-height: 1.7; }
+
+/* 设置页每张卡偏窄，引擎行改竖排，别把模型名挤掉 */
+.settings-layout .model-row {
+  grid-template-columns: 1fr;
+  grid-template-areas: "head" "controls" "state";
+  gap: 8px;
+}
+.settings-layout .m-provider,
+.settings-layout .m-engine { width: auto; flex: 0 0 auto; max-width: 52%; }
+.settings-layout .m-controls {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 8px;
+}
+.settings-layout .m-slot { grid-column: 1 / -1; }
+.settings-layout .m-slot input { min-width: 90px; }
+
+@media (max-width: 900px) {
+  .settings-layout { grid-template-columns: 1fr; }
 }

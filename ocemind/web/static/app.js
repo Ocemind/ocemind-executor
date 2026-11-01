@@ -9,18 +9,38 @@ const STATUS_TEXT = {
 
 const CAP_META = {
   "download.platform": { glyph: "↓", label: "下载视频" },
-  "transcribe.asr":    { glyph: "文", label: "转文字" },
-  "media.transcode":   { glyph: "转", label: "转码/压缩" },
+  "transcribe.asr":    { glyph: "文", label: "转写" },
+  "media.transcode":   { glyph: "转", label: "转码" },
   "media.subtitle":    { glyph: "字", label: "字幕" },
   "media.audio":       { glyph: "音", label: "音频后期" },
   "media.thumbnail":   { glyph: "封", label: "抽帧封面" },
   "doc.parse":         { glyph: "档", label: "文档解析" },
-  "image.ocr":         { glyph: "识", label: "图片 OCR" },
+  "image.ocr":         { glyph: "识", label: "图片识别" },
   "image.edit":        { glyph: "图", label: "图像处理" },
-  "image.generate":    { glyph: "绘", label: "AI 生图" },
-  "audio.tts":         { glyph: "声", label: "TTS 配音" },
+  "image.generate":    { glyph: "绘", label: "生成图片" },
+  "audio.tts":         { glyph: "声", label: "语音合成" },
   "audio.voiceclone":  { glyph: "仿", label: "声音克隆" },
   "publish.browser":   { glyph: "发", label: "发布" },
+};
+
+/* 动作条上的短名。全部两个字，界面上只出现这套。 */
+const VERB_LABEL = {
+  "download.platform": "下载", "transcribe.asr": "转写", "media.transcode": "转码",
+  "media.thumbnail": "截图", "image.ocr": "识别", "doc.parse": "解析",
+  "image.generate": "生成", "image.edit": "修图", "audio.tts": "配音",
+  "audio.voiceclone": "克隆", "media.subtitle": "字幕", "media.audio": "音频",
+  "publish.browser": "发布",
+};
+
+/* 按输入类型排的候选动作，第一个是默认。
+   不问「你想干嘛」，直接给最可能是的那几个。 */
+const VERB_TABLE = {
+  url:   ["download.platform", "transcribe.asr", "media.thumbnail", "doc.parse"],
+  video: ["transcribe.asr", "media.transcode", "media.thumbnail", "publish.browser"],
+  audio: ["transcribe.asr", "media.transcode", "audio.tts", "publish.browser"],
+  image: ["image.ocr", "image.generate", "image.edit", "publish.browser"],
+  doc:   ["doc.parse", "transcribe.asr", "publish.browser"],
+  text:  ["image.generate", "audio.tts"],
 };
 
 const CAP_KINDS = {
@@ -68,14 +88,16 @@ const $$ = (s) => Array.from(document.querySelectorAll(s));
 
 const el = {
   url: $("#url-input"), capSelect: $("#cap-select"), add: $("#btn-add"),
-  paste: $("#btn-paste"), browse: $("#btn-browse"), dir: $("#dir-input"),
+  browse: $("#btn-browse"), dir: $("#dir-input"),
   pickDir: $("#btn-dir"), quality: $("#quality-select"), conn: $("#conn-input"),
   srt: $("#srt-check"), mode: $("#mode-select"), extra: $("#extra-fields"),
   list: $("#task-list"), empty: $("#empty"), toast: $("#toast"),
+  card: $("#add-card"), verbBar: $("#verb-bar"), addFoot: $("#add-foot"),
+  destHint: $("#dest-hint"), optsWrap: $("#opts-wrap"),
   probeCard: $("#probe-card"), probeThumb: $("#probe-thumb"),
   probeTitle: $("#probe-title"), probeMeta: $("#probe-meta"),
   probeLogin: $("#probe-login"),
-  settingsModal: $("#settings-modal"), accountModal: $("#account-modal"),
+  accountModal: $("#account-modal"),
   publishModal: $("#publish-modal"),
   secureUrl: $("#secure-url"), secureResult: $("#secure-result"),
   secureDir: $("#secure-dir"), secureWorkers: $("#secure-workers"),
@@ -119,6 +141,23 @@ function esc(text) {
   return String(text == null ? "" : text)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/* 错误说人话：先给一句能看懂的，再告诉下一步。原文留在 title 里。 */
+const ERROR_HINTS = [
+  [/no such file|not found|找不到|does not exist/i, "文件不在了，确认路径还在"],
+  [/permission denied|access is denied|权限/i, "没有读写权限，换个目录试试"],
+  [/no space left|空间不足|disk full/i, "磁盘满了，先清点空间"],
+  [/timed? ?out|timeout|超时/i, "等太久了，网络可能不通"],
+  [/connection|网络|resolve|dns/i, "网络没通，检查代理或稍后重试"],
+  [/401|403|forbidden|unauthorized|登录/i, "登录态过期了，去账号里重登一次"],
+  [/unsupported|codec|decoder|invalid data/i, "这个格式解不了，先转成 MP4 / H.264"],
+  [/ffmpeg/i, "转码没成功，文件可能损坏"],
+];
+function humanError(msg) {
+  const raw = msg || "未知错误";
+  for (const [re, hint] of ERROR_HINTS) if (re.test(raw)) return hint;
+  return raw.length > 60 ? raw.slice(0, 60) + "…" : raw;
 }
 
 let toastTimer = null;
@@ -171,9 +210,11 @@ async function init() {
   // 项目和序列是「最近一次」的输入，换个链接重跑同一系列时不用重填
   el.project.value = localStorage.getItem("ocemind.project") || "";
   el.sequence.value = localStorage.getItem("ocemind.sequence") || "";
+  updateDest();
+  refreshEntry();
 
   const direct = (location.hash || "").replace("#", "");
-  if (["tasks", "secure", "artifacts", "models", "accounts", "connect"].includes(direct)) {
+  if (["tasks", "secure", "artifacts", "settings", "accounts"].includes(direct)) {
     setView(direct);
   }
 }
@@ -242,11 +283,12 @@ async function refreshUsage() {
     const text = limit
       ? `¥${u.spent.toFixed(2)} / ¥${u.budget.toFixed(0)}`
       : `¥${u.spent.toFixed(2)}`;
-    $("#budget-text").textContent = text;
-    $("#budget-pill").classList.toggle("over", limit && u.spent >= u.budget);
+    // 用量不占页头，跟着「月度预算」那一行显示
     const modelSpent = $("#model-spent");
-    if (modelSpent) modelSpent.textContent = text;
-    $("#model-budget-pill")?.classList.toggle("over", limit && u.spent >= u.budget);
+    if (modelSpent) {
+      modelSpent.textContent = `本月已用 ¥${u.spent.toFixed(2)}`;
+      modelSpent.classList.toggle("over", limit && u.spent >= u.budget);
+    }
   } catch (_) {}
 }
 
@@ -438,10 +480,10 @@ async function syncArtifacts(payload) {
 async function backfillArtifacts() {
   try {
     const res = await api("/api/exec/artifacts/index", { method: "POST" });
-    toast(`补登记 ${res.indexed} 条产出`);
+    toast(`补录 ${res.indexed} 条产出`);
     await refreshArtifacts();
   } catch (err) {
-    toast("补登记失败：" + err.message, true);
+    toast("补录失败：" + err.message, true);
   }
 }
 
@@ -457,24 +499,25 @@ function bindEvents() {
 
   el.add.addEventListener("click", addTask);
   el.url.addEventListener("keydown", (e) => { if (e.key === "Enter") addTask(); });
-  el.url.addEventListener("input", () => { scheduleProbe(); scheduleDetect(); });
+  el.url.addEventListener("input", () => { refreshEntry(); scheduleProbe(); scheduleDetect(); });
   el.capSelect.addEventListener("change", () => { renderExtra(); scheduleProbe(); });
-  el.paste.addEventListener("click", pasteFromClipboard);
+  // 焦点不在输入框里时也能 Ctrl+V：省得先点一下输入框
+  document.addEventListener("paste", onWindowPaste);
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".verb-bar")) $("#verb-menu")?.classList.add("hidden");
+  });
   el.browse.addEventListener("click", pickFile);
   el.pickDir.addEventListener("click", pickDirectory);
   el.probeLogin.addEventListener("click", startCourseLogin);
   el.list.addEventListener("click", onListClick);
 
-  $("#btn-settings").addEventListener("click", openSettings);
-  $("#btn-close-settings").addEventListener("click", () => el.settingsModal.classList.add("hidden"));
   $("#btn-save-settings").addEventListener("click", saveSettingsForm);
   $("#set-dir-pick").addEventListener("click", async () => {
     const picked = await pickFolder($("#set-dir").value);
-    if (picked) $("#set-dir").value = picked;
+    if (picked) { $("#set-dir").value = picked; el.dir.value = picked; updateDest(); }
   });
-  el.settingsModal.addEventListener("click", (e) => {
-    if (e.target === el.settingsModal) el.settingsModal.classList.add("hidden");
-  });
+  $("#btn-secure").addEventListener("click", () => setView("secure"));
+  $("#btn-back-exec").addEventListener("click", () => setView("tasks"));
 
   // ---- 加密下载 ----
   $("#secure-import").addEventListener("click", async () => {
@@ -532,24 +575,13 @@ function bindEvents() {
     if (btn) syncArtifacts({ ids: [btn.dataset.id] });
   });
 
-  // ---- 模型与接口 ----
+  // ---- 模型接口 ----
   $("#btn-save-budget").addEventListener("click", async () => {
     await saveSettings({ monthlyBudget: Number($("#set-budget").value) || 0 });
     toast("预算已保存");
     refreshUsage();
   });
 
-  // ---- 设置里的跳转 ----
-  $("#btn-goto-secure").addEventListener("click", () => {
-    el.settingsModal.classList.add("hidden");
-    setView("secure");
-  });
-  $("#btn-goto-models").addEventListener("click", () => {
-    el.settingsModal.classList.add("hidden");
-    setView("models");
-  });
-
-  $("#btn-add-account").addEventListener("click", openAccountModal);
   $("#btn-add-account-2").addEventListener("click", openAccountModal);
   $("#btn-close-account").addEventListener("click", () => el.accountModal.classList.add("hidden"));
   $("#btn-create-account").addEventListener("click", createAccount);
@@ -609,15 +641,24 @@ function bindEvents() {
 /* ───────────────────────── 视图切换 ───────────────────────── */
 
 function setView(view) {
+  // 旧书签 / 旧链接里的 models、connect 都并到「设置」了
+  if (view === "models" || view === "connect") view = "settings";
   state.view = view;
   $$(".view").forEach((v) => v.classList.toggle("hidden", v.id !== `view-${view}`));
   $$(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
   if (view === "accounts") { refreshAccounts(); startFrames(); }
   else stopFrames();
-  if (view === "connect") { loadConnect(); renderConnCode(); }
   if (view === "secure") refreshCourseAuth();
   if (view === "artifacts") refreshArtifacts();
-  if (view === "models") { loadModels(); refreshUsage(); }
+  if (view === "settings") {
+    fillSettings();
+    loadModels();
+    refreshUsage();
+    loadConnect();
+    renderConnCode();
+    refreshFeishu();
+    renderCapList();
+  }
 }
 
 function setFilter(filter) {
@@ -654,6 +695,76 @@ function currentCapability() {
   const chosen = el.capSelect.value;
   if (chosen !== "auto") return chosen;
   return detectCapability(el.url.value.trim());
+}
+
+/* ───────────────────────── 接活区：动作推断 ───────────────────────── */
+
+function inputKind(text) {
+  if (!text) return "";
+  if (isUrl(text)) return "url";
+  if (VIDEO_EXT.test(text)) return "video";
+  if (AUDIO_EXT.test(text)) return "audio";
+  if (IMG_EXT.test(text)) return "image";
+  if (DOC_EXT.test(text)) return "doc";
+  return "text";
+}
+
+function updateDest() {
+  const dir = el.dir.value || "默认目录";
+  el.destHint.textContent = "存到 " + dir;
+  el.destHint.title = dir;
+}
+
+/** 输入一变就重排：空着就收成一行，有东西才把动作条露出来 */
+function refreshEntry() {
+  const text = el.url.value.trim();
+  const has = !!text;
+  el.card.classList.toggle("is-empty", !has);
+  el.verbBar.classList.toggle("hidden", !has);
+  el.addFoot.classList.toggle("hidden", !has);
+  el.optsWrap.classList.toggle("hidden", !has);
+  if (!has) {
+    el.capSelect.value = "auto";
+    el.destHint.textContent = "";
+    return;
+  }
+  const kind = inputKind(text);
+  const auto = detectCapability(text);
+  const list = VERB_TABLE[kind] || [];
+  if (!list.includes(el.capSelect.value)) {
+    el.capSelect.value = list.includes(auto) ? auto : (list[0] || "auto");
+  }
+  renderVerbBar(kind);
+  updateDest();
+}
+
+function renderVerbBar(kind) {
+  const base = VERB_TABLE[kind] || [];
+  const active = el.capSelect.value;
+  // 从「更多」里挑的动作要留在条上，不然选完看不见自己选了啥
+  const list = base.slice();
+  if (active && active !== "auto" && VERB_LABEL[active] && !list.includes(active)) list.push(active);
+  const rest = Object.keys(VERB_LABEL).filter((cap) => !list.includes(cap));
+  const chip = (cap) => `<button class="verb${cap === active ? " on" : ""}"
+      data-cap="${cap}">${VERB_LABEL[cap] || cap}</button>`;
+
+  el.verbBar.innerHTML =
+    list.map(chip).join("") +
+    `<button class="verb more" id="verb-more">更多 ▾</button>` +
+    `<div class="verb-menu hidden" id="verb-menu">${rest.map(chip).join("")}</div>`;
+
+  el.verbBar.querySelectorAll("button[data-cap]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      el.capSelect.value = btn.dataset.cap;
+      renderVerbBar(kind);
+      renderExtra();
+      scheduleProbe();
+    });
+  });
+  $("#verb-more")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    $("#verb-menu")?.classList.toggle("hidden");
+  });
 }
 
 /* ───────────────────────── 能力附加选项 ───────────────────────── */
@@ -819,13 +930,32 @@ function applyQualityOptions(info) {
 
 /* ───────────────────────── 添加任务 ───────────────────────── */
 
-async function pasteFromClipboard() {
-  try {
-    const text = await navigator.clipboard.readText();
-    if (text) { el.url.value = text.trim(); el.url.focus(); scheduleProbe(); }
-  } catch (_) {
-    toast("读取剪贴板失败，请手动粘贴", true);
-  }
+/** Ctrl+V 落在哪个框里：当前视图的主链接输入框，别处不接管 */
+function pasteTarget() {
+  const shown = (id) => !document.getElementById(id).classList.contains("hidden");
+  if (shown("view-secure")) return $("#secure-url");
+  if (shown("view-tasks")) return el.url;
+  return null;
+}
+
+/**
+ * 窗口级粘贴。焦点在输入框里就交给浏览器自己处理；不在的话（比如刚打开
+ * 窗口、或者点了空白处），直接把剪贴板里的文本送进链接框。
+ */
+function onWindowPaste(e) {
+  const tag = (e.target?.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea") return;
+  const target = pasteTarget();
+  const text = e.clipboardData?.getData("text/plain") || "";
+  // 直接从表格、文档里复制会带一堆换行，只认第一行有内容的
+  const first = text.split(/\r?\n/).map((s) => s.trim()).find(Boolean) || "";
+  if (!target || !first) return;
+  e.preventDefault();
+  target.value = first;
+  target.focus();
+  target.dispatchEvent(new Event("input", { bubbles: true }));
+  // 粘完链接把焦点挪到「开始」上，回车就能跑，不用再点一下
+  if (target === el.url && currentCapability() === "download.platform") el.add.focus();
 }
 
 async function pickFile() {
@@ -834,7 +964,13 @@ async function pickFile() {
     try { path = await window.pywebview.api.select_file(""); } catch (_) {}
   }
   if (!path) path = prompt("输入文件完整路径", "") || "";
-  if (path) { el.url.value = path; el.url.focus(); scheduleDetect(); renderExtra(); }
+  if (path) {
+    el.url.value = path;
+    el.url.focus();
+    refreshEntry();
+    scheduleDetect();
+    renderExtra();
+  }
 }
 
 async function pickFolder(current) {
@@ -880,7 +1016,7 @@ async function addTask() {
     clearProbe();
     el.extra.innerHTML = "";
     el.extra.classList.add("hidden");
-    el.add.textContent = "开始";
+    refreshEntry();
     setFilter("all");
     await refresh();
   } catch (err) {
@@ -1160,7 +1296,7 @@ function pollCourseLogin() {
   }, 2000);
 }
 
-/* ───────────────────────── 模型与接口 ───────────────────────── */
+/* ───────────────────────── 模型接口 ───────────────────────── */
 
 const LOCAL_KIND_LABEL = { asr: "转写", ocr: "文字识别" };
 
@@ -1550,7 +1686,7 @@ function renderMeta(node, t, indeterminate) {
   }
 
   if (t.status === "error") {
-    add(t.error || "未知错误", "err");
+    bits.push(`<span class="err" title="${esc(t.error || "")}">${esc(humanError(t.error))}</span>`);
   } else if (t.status === "cancelled") {
     add("已取消");
   } else if (t.capability) {
@@ -1667,6 +1803,7 @@ function groupByPlatform(accounts) {
 
 function renderSideAccounts() {
   const box = $("#side-accounts");
+  if (!box) return;   // 侧栏不再放账号列表，账号页自己有
   if (!state.accounts.length) {
     box.innerHTML = `<div class="side-empty">还没有账号。<br>添加后每个平台一个独立浏览器，登一次能用几天。</div>`;
     return;
@@ -1873,7 +2010,7 @@ async function deleteAccount(accountId) {
   }
 }
 
-/* ───────────────────────── 连接 Agent ───────────────────────── */
+/* ───────────────────────── 外部接入 ───────────────────────── */
 
 async function loadConnect() {
   try {
@@ -1896,7 +2033,7 @@ async function loadConnect() {
 function renderConnCode() {
   const info = state.connInfo || { local: "http://127.0.0.1:8765", lan: [] };
   const url = info.local || "http://127.0.0.1:8765";
-  const token = "<在「连接 Agent」里生成的令牌>";
+  const token = "<在「外部接入」里生成的令牌>";
   let text = "";
   if (state.connTab === "mcp") {
     text = JSON.stringify({
@@ -1994,7 +2131,7 @@ async function saveSettings(patch) {
   }
 }
 
-function openSettings() {
+function fillSettings() {
   const s = state.settings;
   $("#set-dir").value = s.defaultDir || "";
   $("#set-conn").value = s.defaultConnections || 8;
@@ -2010,7 +2147,6 @@ function openSettings() {
   $("#set-ffmpeg").value = s.ffmpegPath || "";
   $("#set-chrome").value = s.chromePath || "";
   $("#set-headless").checked = !!s.headless;
-  el.settingsModal.classList.remove("hidden");
 }
 
 async function saveSettingsForm() {
@@ -2033,7 +2169,7 @@ async function saveSettingsForm() {
   await saveSettings(values);
   el.dir.value = values.defaultDir || el.dir.value;
   el.conn.value = values.defaultConnections;
-  el.settingsModal.classList.add("hidden");
+  updateDest();
   toast("设置已保存");
   loadSystem();
 }

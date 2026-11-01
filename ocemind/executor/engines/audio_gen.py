@@ -1,7 +1,7 @@
 """语音生成：TTS 配音与声音克隆。
 
 都走 API，本机不加载任何声音模型权重（这类模型体积和显存都不适合
-随程序分发）。服务商在「模型与接口」里为这两项能力分别选择。
+随程序分发）。服务商在「设置 · API 服务商」里为这两项能力分别选择。
 
 克隆出来的音色用平台返回的 `uri` 作为 voice 参数复用，不需要每次重传样本。
 """
@@ -152,7 +152,7 @@ class VoiceClone(Engine):
             return fail(target["problem"] or "声音克隆服务不可用")
         if target["provider"] != "siliconflow":
             return fail("声音克隆目前只有 SiliconFlow 提供样本上传接口，"
-                        "请在「模型与接口」里把声音克隆切到 SiliconFlow")
+                        "请在「设置 · API 服务商」里把声音克隆切到 SiliconFlow")
         key, base, model = target["key"], target["base"], target["model"]
 
         ctx.progress(None, "上传样本")
