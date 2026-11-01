@@ -7,6 +7,7 @@
     python run.py --tk                   # 旧的 Tk 界面（备用）
     python run.py --exec capabilities    # 执行器的 CLI（给 Agent 用）
     python run.py --url "<课程链接>"      # 命令行
+    python run.py --run-ytdlp -J "<链接>" # 用托管目录里的 yt-dlp 跑（下载引擎内部用）
 
 fastapi / uvicorn / pywebview 都只在真正需要时才导入：Tk 与命令行用户
 不该为它们多等启动时间，也不该因为没装它们就跑不起来。
@@ -143,6 +144,11 @@ def _serve(argv):
 
 def main():
     argv = sys.argv[1:]
+    if "--run-ytdlp" in argv:
+        # 打包后没有独立 python 可执行文件，yt-dlp 由 sidecar 自己的解释器跑
+        from ocemind.toolchain import run_ytdlp
+
+        raise SystemExit(run_ytdlp(argv[argv.index("--run-ytdlp") + 1:]))
     if "--serve" in argv:
         _serve(argv)
     elif "--tk" in argv:

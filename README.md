@@ -71,7 +71,43 @@ python run.py --serve --port 8765   # 只起本地服务（Tauri 壳 / 远程调
 pip install -r requirements.txt
 ```
 
-还需要 `ffmpeg`（放 PATH 里，或填进设置 → 外部工具）。
+### 装到别人电脑上要准备什么
+
+| 组件 | 安装版（MSI / AppImage） | 源码运行 |
+|------|------------------------|---------|
+| Python | **自带**，不用装 | 需要 3.10+，`pip install -r requirements.txt` |
+| ffmpeg | **自动**：先找本机，没有就下到 `%APPDATA%\ocemind\tools\` | 同上，也可以自己装进 PATH |
+| yt-dlp | **自动**：同上，存成 zipapp 由 sidecar 的解释器加载 | 同上（`pip install yt-dlp` 也行） |
+| Chrome | 抖音下载、账号登录、发布需要**本机已装 Chrome** | 同左 |
+| 转写 / OCR 引擎 | 用到时在「模型与接口」里一键装 | 同左 |
+
+自动下载只看两件事：**本机有没有**（PATH、`C:\ffmpeg\bin`、scoop /
+chocolatey / winget 的落点），以及**托管目录里有没有**。两者都没有才下载，
+下载文件一律校验 SHA-256，不写系统 PATH，卸载软件时删数据目录即可。
+关掉它：设置里取消「启动时自动下载」，或设环境变量
+`OCEMIND_NO_TOOL_DOWNLOAD=1`。
+
+GitHub 在国内不一定连得上，所以客户端**优先问镜像**：设置 → 外部工具里的
+「工具镜像」填一个静态站点地址（如 `https://你的域名/tools`），客户端会先取
+`<镜像>/index.json`，取不到再回落 GitHub。镜像由
+`tools/sync_tools_mirror.py` 从 GitHub Release 同步：
+
+```bash
+# 在服务器（或任何能连 GitHub 的机器）上跑，产出 index.json + 安装包
+python tools/sync_tools_mirror.py --out /srv/www/tools
+# 本地产出后推上去；不带 --delete，不会动同目录别的东西
+python tools/sync_tools_mirror.py --out ./mirror --upload user@host:/srv/www/tools
+# 发布前校验一遍
+python tools/sync_tools_mirror.py --out /srv/www/tools --verify
+```
+
+挂在 cron / systemd timer 里每天跑一次就跟得上上游。目录结构是固定的：
+`<镜像>/ffmpeg/<平台>/<文件>`、`<镜像>/ytdlp/any/yt-dlp.zip`，清单见
+`index.json`。以后要再接别的开源工具，在 `ocemind/toolchain.py` 里加一条
+`FALLBACK_URLS`，脚本里加一条资产名即可。
+
+完整的部署步骤（静态站点、systemd timer、让客户端默认走镜像）见
+[docs/tools-mirror.md](docs/tools-mirror.md)。
 
 ### Tauri 桌面壳
 
@@ -128,7 +164,7 @@ AppImage——deb 装的是只读副本，没有应用内自更新入口。
 
 AppImage 是单文件，双击即跑，用户数据放在 `~/.local/share/ocemind`。
 Ubuntu 24.04 默认没有 FUSE2，跑之前要 `sudo apt install libfuse2t64`，
-或者用 `./ocemind_2.3.1_amd64.AppImage --appimage-extract-and-run`。
+或者用 `./ocemind_2.3.3_amd64.AppImage --appimage-extract-and-run`。
 
 ### 自动更新
 

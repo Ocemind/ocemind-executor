@@ -19,6 +19,14 @@ def find_ytdlp(explicit: str = "") -> list[str]:
     """
     if explicit and Path(explicit).exists():
         return [explicit]
+    from ocemind import toolchain
+
+    if toolchain.managed_path("ytdlp"):
+        return toolchain.ytdlp_command()
+    if getattr(sys, "frozen", False):
+        # 冻结环境里没有独立 python，`-m yt_dlp` 跑不通；交给
+        # --run-ytdlp，没装时它自己会明确说「还未安装」
+        return toolchain.ytdlp_command()
     if importlib.util.find_spec("yt_dlp") is not None:
         return [sys.executable, "-m", "yt_dlp"]
     exe = shutil.which("yt-dlp")
@@ -38,7 +46,12 @@ def find_ffmpeg(explicit: str = "") -> str:
             return str(p.parent)
         if p.is_dir():
             return str(p)
-    exe = shutil.which("ffmpeg")
+    from ocemind import toolchain
+
+    managed = toolchain.managed_path("ffmpeg")
+    if managed:
+        return str(Path(managed).parent)
+    exe = toolchain.system_path("ffmpeg") or shutil.which("ffmpeg")
     if exe:
         return str(Path(exe).parent)
     for base in (r"D:\Program Files", r"C:\Program Files", r"D:\Program Files (x86)"):
@@ -66,7 +79,8 @@ def tool_versions(ytdlp_path: str = "", ffmpeg_path: str = "") -> dict:
     ffdir = find_ffmpeg(ffmpeg_path)
     versions["ffmpeg_dir"] = ffdir
     if ffdir:
-        exe = Path(ffdir) / "ffmpeg.exe"
+        # Linux 的 ffmpeg 没有 .exe 后缀，写死 exe 会让 AppImage 上一律显示「不可用」
+        exe = Path(ffdir) / ("ffmpeg.exe" if sys.platform == "win32" else "ffmpeg")
         try:
             out = subprocess.run(
                 [str(exe), "-version"],

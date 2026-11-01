@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from ocemind import __version__, auth, core, douyin, paths
+from ocemind import __version__, auth, core, douyin, paths, toolchain
 from ocemind.cookies import (cookie_status, find_cookie_path, find_ko_token,
                               load_cookies, parse_netscape)
 from ocemind.links import first_url
@@ -152,7 +152,32 @@ def create_app(cfg: Config, manager: TaskManager) -> FastAPI:
     @app.get("/api/system")
     def system():
         versions = tools.tool_versions(cfg.get("ytdlpPath") or "", cfg.get("ffmpegPath") or "")
-        return {"settings": dict(cfg.data), "tools": versions}
+        return {"settings": dict(cfg.data), "tools": versions,
+                "toolchain": toolchain.status_snapshot()}
+
+    @app.post("/api/tools/ensure")
+    def tools_ensure():
+        """手动补装：上次自动下载失败（断网、镜像挂了）时的重试入口。"""
+        base = toolchain.mirror_base(cfg.get("toolsMirror") or "")
+        explicit = {"ffmpeg": cfg.get("ffmpegPath") or "",
+                    "ytdlp": cfg.get("ytdlpPath") or ""}
+        started = []
+        for name in ("ffmpeg", "ytdlp"):
+            if toolchain.available(name, explicit.get(name, "")):
+                continue
+            if toolchain.ensure_in_background(name, base):
+                started.append(name)
+        return {"ok": True, "started": started,
+                "toolchain": toolchain.status_snapshot()}
+
+    @app.get("/api/tools/status")
+    def tools_status():
+        """界面轮询用：只回下载状态。
+
+        不能拿 /api/system 来轮询——那个要跑 `ffmpeg -version` 和
+        `yt-dlp --version`，每次两三个子进程，下载时两秒轮一次会把界面拖慢。
+        """
+        return {"toolchain": toolchain.status_snapshot()}
 
     @app.get("/api/tasks")
     def list_tasks():
@@ -281,5 +306,10 @@ def create_app(cfg: Config, manager: TaskManager) -> FastAPI:
     def reveal(body: SettingsBody):  # 复用 {values: {path: ...}}
         _reveal(body.values.get("path", ""))
         return {"ok": True}
+
+    # 外部工具托管：只在真实数据目录上跑。测试和便携场景传了 home，
+    # 不该因为跑一次单测就往用户机器上下 100 MB 的 ffmpeg。
+    if str(cfg.home) == str(Path(paths.app_dir())):
+        toolchain.autostart(cfg)
 
     return app

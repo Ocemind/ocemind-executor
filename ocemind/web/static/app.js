@@ -199,12 +199,85 @@ async function loadSystem() {
     $("#tool-ffmpeg").title = sys.tools.ffmpeg_dir || "";
     const chrome = sys.settings.chromePath || "";
     $("#tool-chrome").textContent = chrome ? "已配置" : "自动查找";
+    applyToolchain(sys.toolchain);
     el.secureDir.value = sys.settings.defaultDir || "";
     el.secureWorkers.value = sys.settings.courseWorkers || 24;
     el.secureLine.value = sys.settings.courseLine || "";
     el.secureKeepTs.checked = !!sys.settings.courseKeepTs;
   } catch (err) {
     toast("无法连接本地服务：" + err.message, true);
+  }
+}
+
+/* 外部工具（ffmpeg / yt-dlp）的托管状态：缺了显示「未安装」，
+   后台下载时显示百分比，失败给个重试提示 */
+let toolPollTimer = null;
+
+function applyToolchain(tc) {
+  const map = { ffmpeg: "#tool-ffmpeg", ytdlp: "#tool-ytdlp" };
+  let busy = false;
+  Object.keys(map).forEach(function (name) {
+    const info = tc && tc[name];
+    if (!info) return;
+    const node = $(map[name]);
+    if (!node) return;
+    if (info.status === "downloading") {
+      busy = true;
+      node.textContent = "下载中 " + Math.round((info.progress || 0) * 100) + "%";
+      if (info.path) node.title = info.path;
+    } else if (info.status === "error") {
+      node.textContent = "下载失败";
+      node.title = (info.error || "") + "（设置里可以重试）";
+    } else if (info.status === "missing") {
+      node.textContent = "未安装";
+      node.title = "设置里点「下载缺失工具」，或自己装一个";
+    } else if (info.path) {
+      node.title = info.path;
+    }
+  });
+  if (busy) pollToolchain();
+}
+
+function pollToolchain() {
+  if (toolPollTimer) return;
+  toolPollTimer = setInterval(async function () {
+    try {
+      // 轻量接口：/api/system 会去跑 ffmpeg/yt-dlp 的 --version，别拿它轮询
+      const res = await api("/api/tools/status");
+      const tc = res.toolchain || {};
+      applyToolchain(tc);
+      const busy = Object.keys(tc).some(function (k) {
+        return tc[k] && tc[k].status === "downloading";
+      });
+      if (!busy) {
+        clearInterval(toolPollTimer);
+        toolPollTimer = null;
+        loadSystem();   // 下载完把版本号补上
+      }
+    } catch (_) {
+      clearInterval(toolPollTimer);
+      toolPollTimer = null;
+    }
+  }, 2000);
+}
+
+async function ensureTools() {
+  try {
+    // 直接用 api 而不是 saveSettings：后者吞异常，镜像存不上会白下
+    state.settings = await api("/api/settings", {
+      method: "POST",
+      body: JSON.stringify({ values: { toolsMirror: $("#set-tools-mirror").value.trim() } }),
+    });
+    const res = await api("/api/tools/ensure", { method: "POST" });
+    if (res.started && res.started.length) {
+      toast("开始下载：" + res.started.join(" / "));
+      applyToolchain(res.toolchain || {});
+      pollToolchain();
+    } else {
+      toast("ffmpeg 和 yt-dlp 都已经就绪");
+    }
+  } catch (err) {
+    toast("下载失败：" + err.message, true);
   }
 }
 
@@ -462,6 +535,7 @@ function bindEvents() {
   $("#btn-settings").addEventListener("click", openSettings);
   $("#btn-close-settings").addEventListener("click", () => el.settingsModal.classList.add("hidden"));
   $("#btn-save-settings").addEventListener("click", saveSettingsForm);
+  $("#btn-tools-ensure").addEventListener("click", ensureTools);
   $("#set-dir-pick").addEventListener("click", async () => {
     const picked = await pickFolder($("#set-dir").value);
     if (picked) $("#set-dir").value = picked;
@@ -2002,6 +2076,8 @@ function openSettings() {
   $("#set-proxy-port").value = s.proxyPort || "";
   $("#set-ytdlp").value = s.ytdlpPath || "";
   $("#set-ffmpeg").value = s.ffmpegPath || "";
+  $("#set-tools-mirror").value = s.toolsMirror || "";
+  $("#set-auto-tools").checked = s.autoDownloadTools !== false;
   $("#set-chrome").value = s.chromePath || "";
   $("#set-headless").checked = !!s.headless;
   el.settingsModal.classList.remove("hidden");
@@ -2021,6 +2097,8 @@ async function saveSettingsForm() {
     proxyPort: $("#set-proxy-port").value.trim(),
     ytdlpPath: $("#set-ytdlp").value.trim(),
     ffmpegPath: $("#set-ffmpeg").value.trim(),
+    toolsMirror: $("#set-tools-mirror").value.trim(),
+    autoDownloadTools: $("#set-auto-tools").checked,
     chromePath: $("#set-chrome").value.trim(),
     headless: $("#set-headless").checked,
   };
