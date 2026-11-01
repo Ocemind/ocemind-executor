@@ -71,30 +71,59 @@
   var updateBtn = document.getElementById("btn-update");
   var updateLabel = document.getElementById("update-label");
   if (updateBtn && window.__OCEMIND_UPDATER__) {
+    var pending = null; // 启动时查到的版本号，点按钮就不用再查一遍
+
     updateBtn.hidden = false;
-    updateBtn.addEventListener("click", function () {
-      updateBtn.disabled = true;
-      updateLabel.textContent = "检查中…";
-      invoke("check_update").then(function (version) {
-        if (!version) {
+
+    /* silent=true 是启动时的静默检查：查不到更新、或者网络不通都不打扰用户，
+       只在真的有新版本时把「检查更新」换成版本号。 */
+    function check(silent) {
+      if (!silent) {
+        updateBtn.disabled = true;
+        updateLabel.textContent = "检查中…";
+      }
+      return invoke("check_update").then(function (version) {
+        pending = version || null;
+        if (pending) {
+          updateLabel.textContent = "发现新版本 v" + pending;
+          updateLabel.style.fontWeight = "600";
+        } else if (!silent) {
           updateLabel.textContent = "已是最新";
-          updateBtn.disabled = false;
-          return;
         }
-        if (!window.confirm("发现新版本 " + version + "，现在下载并安装？")) {
-          updateLabel.textContent = "检查更新";
-          updateBtn.disabled = false;
-          return;
-        }
-        updateLabel.textContent = "下载中…";
-        return invoke("install_update").then(function () {
-          updateLabel.textContent = "正在重启…";
-        });
       }).catch(function (err) {
-        updateLabel.textContent = "检查更新";
-        updateBtn.disabled = false;
+        pending = null;
+        if (silent) return; // 启动时网络不通很常见，别弹窗
         window.alert("检查更新失败：" + (err && err.message ? err.message : err));
+      }).then(function () {
+        updateBtn.disabled = false;
       });
+    }
+
+    function install(version) {
+      if (!window.confirm("发现新版本 " + version + "，现在下载并安装？")) return;
+      updateBtn.disabled = true;
+      updateLabel.textContent = "下载中…";
+      invoke("install_update").then(function () {
+        updateLabel.textContent = "正在重启…";
+      }).catch(function (err) {
+        updateLabel.textContent = "发现新版本 v" + version;
+        updateBtn.disabled = false;
+        window.alert("更新失败：" + (err && err.message ? err.message : err));
+      });
+    }
+
+    updateBtn.addEventListener("click", function () {
+      if (pending) {
+        install(pending);
+        return;
+      }
+      updateLabel.style.fontWeight = "";
+      check(false);
     });
+
+    // 界面先渲染出来，再查更新，别拖慢启动。
+    setTimeout(function () {
+      check(true);
+    }, 3000);
   }
 })();

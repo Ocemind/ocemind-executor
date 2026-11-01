@@ -1,6 +1,6 @@
 [package]
 name = "ocemind-desktop"
-version = "2.3.0"
+version = "2.3.1"
 description = "Ocemind 内容执行器桌面壳"
 authors = ["TimiHub"]
 edition = "2021"

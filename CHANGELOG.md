@@ -3,6 +3,23 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 版本号见 `xiaoe_dl/__init__.py`。
 
+## [2.3.1] - 2026-11-01
+
+### 新增
+
+- **启动时自动检查更新**：界面渲染完 3 秒后静默查一次，有新版本就把侧边栏
+  的「检查更新」换成「发现新版本 vX.Y.Z」，点一下确认即可下载安装。启动时
+  网络不通或没有新版本都不打扰用户
+
+### 修复
+
+- **Windows 更新清单缺条目**：`latest.json` 改由 `tools/make_latest_json.py`
+  按 Release 里的真实资产名生成。tauri-action 用 `productName` 拼文件名去
+  匹配资产，GitHub 会把空格换成 `.`、删掉中文，对不上就静默丢掉
+  `windows-x86_64`，导致 Windows 收不到自动更新
+- **MSI 打包报 ICE38**：per-user 安装下 sidecar 组件不能拿文件当 KeyPath，
+  改用 HKCU 注册表项；同模板里的反斜杠改成双写，避免被 Handlebars 吞掉
+
 ## [2.3.0] - 2026-10-31
 
 桌面端从 pywebview 换成 Tauri 2 壳，界面、能力、接口都不变；新增
