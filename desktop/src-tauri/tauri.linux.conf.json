@@ -1,7 +1,7 @@
 {
   "productName": "ocemind",
   "bundle": {
-    "targets": ["appimage"],
+    "targets": ["appimage", "deb"],
     "linux": {
       "deb": {
         "depends": ["ffmpeg"],

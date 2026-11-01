@@ -11,6 +11,13 @@
   的「检查更新」换成「发现新版本 vX.Y.Z」，点一下确认即可下载安装。启动时
   网络不通或没有新版本都不打扰用户
 
+### 新增（续）
+
+- **Linux deb 安装包**：Release 里除 AppImage 外同时提供
+  `ocemind_2.3.1_amd64.deb`，适合想走系统包管理的场景。deb 装的版本
+  是只读副本，没有应用内自更新（升级需重新下 deb 覆盖安装）；要自动更新
+  还是用 AppImage
+
 ### 修复
 
 - **Windows 更新清单缺条目**：`latest.json` 改由 `tools/make_latest_json.py`

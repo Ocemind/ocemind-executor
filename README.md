@@ -109,11 +109,17 @@ debug 构建的壳默认跑源码（`python run.py`），所以本机装了 MSI 
 `OCEMIND_SIDECAR_FROZEN=1`，壳就会去找 exe 旁边的 `ocemind-sidecar.exe`。
 便携包也同理：`python tools/make_portable_desktop.py --profile debug`。
 
-Linux 只出 **AppImage**（不出 deb / rpm / Flatpak），在
+Linux 出 **AppImage + deb**（不出 rpm / Flatpak），在
 `.github/workflows/release.yml` 的 Ubuntu 24.04 job 里构建；想只验证
-构建链路就手动跑 `.github/workflows/desktop.yml`（不打标签）。
-选 AppImage 而不是 deb，是因为 Tauri 的 updater 在 Linux 只能就地替换
-AppImage——deb 装的版本没法自动更新。macOS 暂不做。
+构建链路就手动跑 `.github/workflows/desktop.yml`（不打标签）。macOS 暂不做。
+
+两种包的分工：
+
+- **AppImage**：单文件、双击即跑，也是唯一能应用内自更新的形态——Tauri 的
+  updater 在 Linux 只能就地替换 AppImage
+- **deb**：`sudo apt install ./ocemind_2.3.1_amd64.deb`，走系统包管理、菜单项
+  齐全，但装的是只读副本，**没有自更新入口**（`APPIMAGE` 环境变量不存在，
+  侧边栏不显示「检查更新」），升级要重新下 deb 覆盖安装
 
 `tauri.linux.conf.json` 里有几处不能省的覆盖：
 
@@ -123,11 +129,11 @@ AppImage——deb 装的版本没法自动更新。macOS 暂不做。
   由 `src-tauri/linux/ocemind.desktop` 提供（AppImage 内置的 .desktop
   也取这份模板）
 - `deb.depends` 只写 `ffmpeg`：webkit/gtk 由 Tauri 自动追加，
-  自己再写一遍会重复（留着是为兼容 deb 构建，AppImage 不用）
+  自己再写一遍会重复
 
 AppImage 是单文件，双击即跑，用户数据放在 `~/.local/share/ocemind`。
 Ubuntu 24.04 默认没有 FUSE2，跑之前要 `sudo apt install libfuse2t64`，
-或者用 `./ocemind_2.3.0_amd64.AppImage --appimage-extract-and-run`。
+或者用 `./ocemind_2.3.1_amd64.AppImage --appimage-extract-and-run`。
 
 ### 自动更新
 
