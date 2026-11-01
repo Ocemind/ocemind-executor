@@ -1,0 +1,174 @@
+name: publish-1.0.0
+
+# v1.0.0 用 tauri-action 发不出去（POST /releases 一直 403，同样的 token 发
+# v1.1.0 正常），所以这条走手工发布：自己 build，自己建 Release、自己传资产。
+# 由 pub100 标签触发；失败时把报错写成 ::error::，本机可以通过 check-run
+# annotation 读到原文。
+
+on:
+  push:
+    tags: ["pub100"]
+
+permissions:
+  contents: write
+
+env:
+  TAG: v1.0.0
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python 依赖
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: 打包 Python sidecar
+        run: python tools/build_sidecar.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 前端依赖
+        working-directory: desktop
+        run: npm ci
+
+      - name: 规范化签名私钥
+        shell: bash
+        env:
+          RAW_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          key="${RAW_KEY//$'\r'/}"
+          printf '%s' "$key" > "$RUNNER_TEMP/updater.key"
+          {
+            echo "TAURI_SIGNING_PRIVATE_KEY<<__OCEMIND_KEY__"
+            cat "$RUNNER_TEMP/updater.key"
+            echo
+            echo "__OCEMIND_KEY__"
+          } >> "$GITHUB_ENV"
+
+      - name: 构建 MSI
+        shell: bash
+        working-directory: desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          OCEMIND_UPDATE_TOKEN: ${{ secrets.OCEMIND_UPDATE_TOKEN }}
+        run: |
+          npm run tauri build -- --config src-tauri/tauri.release.windows.conf.json
+          ls -la src-tauri/target/release/bundle/msi/
+
+      - name: 发布
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          sha=$(git rev-parse HEAD)
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            out=$(gh release create "$TAG" --target "$sha" \
+              --title "Ocemind 内容执行器 1.0.0" \
+              --notes "版本号重排：这一版原本是 2.3.0，代码一致，只把版本号改成 1.0.0。" 2>&1) || {
+              msg=$(printf '%s' "$out" | tr '\n' ' ' | head -c 900)
+              echo "::error title=create-release-failed::$msg"
+              exit 1
+            }
+          fi
+          gh release upload "$TAG" \
+            desktop/src-tauri/target/release/bundle/msi/*.msi \
+            desktop/src-tauri/target/release/bundle/msi/*.msi.sig \
+            --clobber
+
+  linux:
+    needs: windows
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+
+      - name: 系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev \
+            patchelf libssl-dev ffmpeg libfuse2t64 libpython3.12-dev
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python 依赖
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: 打包 Python sidecar
+        run: python tools/build_sidecar.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 前端依赖
+        working-directory: desktop
+        run: npm ci
+
+      - name: 规范化签名私钥
+        shell: bash
+        env:
+          RAW_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          key="${RAW_KEY//$'\r'/}"
+          printf '%s' "$key" > "$RUNNER_TEMP/updater.key"
+          {
+            echo "TAURI_SIGNING_PRIVATE_KEY<<__OCEMIND_KEY__"
+            cat "$RUNNER_TEMP/updater.key"
+            echo
+            echo "__OCEMIND_KEY__"
+          } >> "$GITHUB_ENV"
+
+      - name: 构建 AppImage
+        working-directory: desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          OCEMIND_UPDATE_TOKEN: ${{ secrets.OCEMIND_UPDATE_TOKEN }}
+        run: |
+          npm run tauri build -- --config src-tauri/tauri.release.linux.conf.json
+          ls -la src-tauri/target/release/bundle/appimage/
+
+      - name: 上传 AppImage
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          gh release upload "$TAG" \
+            desktop/src-tauri/target/release/bundle/appimage/*.AppImage \
+            desktop/src-tauri/target/release/bundle/appimage/*.AppImage.sig \
+            --clobber
+
+  done:
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 完成信号
+        run: |
+          git tag -f pub100-done
+          git push -f origin refs/tags/pub100-done
