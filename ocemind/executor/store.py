@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     cookie_expiry REAL,
     status        TEXT NOT NULL DEFAULT 'never',
     note          TEXT NOT NULL DEFAULT '',
+    proxy         TEXT NOT NULL DEFAULT '',   -- 这个账号浏览器的代理，空＝直连
     created_at    REAL NOT NULL
 );
 
@@ -105,7 +106,15 @@ class Store:
         self._conn.row_factory = sqlite3.Row
         with self._lock:
             self._conn.executescript(SCHEMA)
+            self._migrate()
             self._conn.commit()
+
+    def _migrate(self) -> None:
+        """老库补列。CREATE TABLE IF NOT EXISTS 不会给已有的表加字段。"""
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(accounts)")}
+        if "proxy" not in cols:
+            self._conn.execute(
+                "ALTER TABLE accounts ADD COLUMN proxy TEXT NOT NULL DEFAULT ''")
 
     # ---------------------------------------------------------------- jobs
     def upsert_job(self, job: dict) -> None:
@@ -178,19 +187,19 @@ class Store:
             self._conn.execute(
                 """INSERT INTO accounts (id, platform, label, profile_dir, enabled,
                                          last_ok_at, last_check_at, cookie_expiry,
-                                         status, note, created_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                                         status, note, proxy, created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(id) DO UPDATE SET
                      platform=excluded.platform, label=excluded.label,
                      profile_dir=excluded.profile_dir, enabled=excluded.enabled,
                      last_ok_at=excluded.last_ok_at, last_check_at=excluded.last_check_at,
                      cookie_expiry=excluded.cookie_expiry, status=excluded.status,
-                     note=excluded.note""",
+                     note=excluded.note, proxy=excluded.proxy""",
                 (acc["id"], acc["platform"], acc["label"], acc["profile_dir"],
                  int(acc.get("enabled", 1)), acc.get("last_ok_at"),
                  acc.get("last_check_at"), acc.get("cookie_expiry"),
                  acc.get("status", "never"), acc.get("note", ""),
-                 acc.get("created_at", _now())),
+                 acc.get("proxy", ""), acc.get("created_at", _now())),
             )
             self._conn.commit()
 
@@ -242,7 +251,8 @@ class Store:
                     remote_ref, result, created_at, updated_at)
                    VALUES (?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(id) DO UPDATE SET
-                     state=excluded.state, remote_ref=excluded.remote_ref,
+                     job_id=excluded.job_id, state=excluded.state,
+                     remote_ref=excluded.remote_ref,
                      result=excluded.result, updated_at=excluded.updated_at""",
                 (rec["id"], rec["account_id"], rec.get("job_id", ""),
                  rec["platform"], rec["snapshot_hash"], rec["state"],
@@ -275,7 +285,32 @@ class Store:
         sql += " ORDER BY created_at DESC LIMIT 200"
         with self._lock:
             rows = self._conn.execute(sql, args).fetchall()
-        return [dict(r) for r in rows]
+        out = []
+        for row in rows:
+            rec = dict(row)
+            try:
+                rec["result"] = json.loads(rec.get("result") or "{}")
+            except (ValueError, TypeError):
+                rec["result"] = {}
+            out.append(rec)
+        return out
+
+    def list_publish_by_state(self, state: str) -> list[dict]:
+        """只取某个状态的记录。调度器每几秒查一次，别把全表拉回来。"""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM publish_records WHERE state=? ORDER BY created_at",
+                (state,),
+            ).fetchall()
+        out = []
+        for row in rows:
+            rec = dict(row)
+            try:
+                rec["result"] = json.loads(rec.get("result") or "{}")
+            except (ValueError, TypeError):
+                rec["result"] = {}
+            out.append(rec)
+        return out
 
     # --------------------------------------------------------------- usage
     def add_usage(self, provider: str, capability: str, units: float,

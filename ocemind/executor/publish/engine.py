@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 from ..engines.base import Engine, fail, ok
-from . import adapters, standards
+from . import adapters, standards, states
 
 
 def snapshot_hash(files: list[str], meta: dict) -> str:
@@ -104,6 +104,25 @@ class PublishBrowser(Engine):
         title = str(meta.get("title") or Path(files[0]).stem)
         meta["title"] = title
 
+        def mark(state: str) -> None:
+            """把结果状态留在任务上：任务会落盘，重启后还认得出来。"""
+            ctx.job.setdefault("meta", {})["publish_state"] = state
+
+        # 复查：只回读内容管理页，不重传、不重发。审核中的记录靠这个收尾
+        if ctx.params.get("verify_only"):
+            ctx.progress(None, "回读确认")
+            sess = self.pool.get(account)
+            try:
+                sess.ensure_started(adapter.get("manage_url") or adapter["publish_url"])
+            except Exception as exc:  # noqa: BLE001
+                return fail(f"浏览器启动失败：{exc}")
+            if self._verify(sess, adapter, title):
+                mark(states.VERIFIED)
+                ctx.progress(100.0, "完成")
+                return ok(*files)
+            mark(states.REVIEWING)
+            return fail("内容管理页里还是没看到这条，可能仍在审核")
+
         problems = standards.check(meta, standards.load(ctx.config))
         if problems:
             return fail("不符合发布标准：" + "；".join(problems))
@@ -140,25 +159,36 @@ class PublishBrowser(Engine):
         if adapter.get("desc_input") and desc:
             _fill(sess, adapter["desc_input"], desc)
 
+        submitted = False
         if ctx.params.get("submit"):
-            ctx.progress(None, "提交中")
             if not adapter.get("submit"):
-                return fail("这个平台的发布按钮没有配置选择器，需要人工点")
+                mark(states.MANUAL)
+                return fail("这个平台的发布按钮没有配置选择器，内容已填好，需要人工点发布")
+            ctx.progress(None, "提交中")
             sess.evaluate(
                 "(function(sel){const b=document.querySelector(sel);"
                 "if(b){b.click();return true}return false})(%s)"
                 % json.dumps(adapter["submit"]))
+            submitted = True
 
         digest = snapshot_hash(files, meta)
         ctx.job.setdefault("meta", {})["snapshot_hash"] = digest
 
+        if not submitted:
+            # 停在预览页等人点 —— 内容都填好了，这不是失败
+            mark(states.MANUAL)
+            ctx.progress(100.0, "已停在预览页")
+            return ok(*files)
+
         if ctx.params.get("verify", True):
             ctx.progress(None, "回读确认")
-            ok_ = self._verify(sess, adapter, title)
-            if not ok_:
-                return fail("提交后没有在内容管理页看到这条作品，"
-                            "可能还在审核或发布失败，请到后台确认")
+            if not self._verify(sess, adapter, title):
+                # 点了提交但回读没看到：转码/审核都可能，别报失败催人重发
+                mark(states.REVIEWING)
+                return fail("提交了，但内容管理页里还没出现这条作品。"
+                            "平台多半在转码或审核，过一会儿点「复查」确认")
 
+        mark(states.VERIFIED)
         ctx.progress(100.0, "完成")
         return ok(*files)
 

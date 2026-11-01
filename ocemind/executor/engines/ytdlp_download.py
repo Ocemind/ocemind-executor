@@ -11,7 +11,7 @@ import subprocess
 import threading
 from pathlib import Path
 
-from ocemind import douyin, toolchain
+from ocemind import bilibili, douyin, toolchain, ytdlp_updater
 from ocemind.links import first_url
 
 from .base import Engine, cancelled, fail, ok
@@ -49,12 +49,15 @@ def _env() -> dict:
     env = dict(os.environ)
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONUTF8"] = "1"
-    return env
+    # 用户在设置页更新过 yt-dlp 的话，子进程优先用新的那份
+    return ytdlp_updater.apply_env(env)
 
 
 def probe(url: str, cfg) -> dict:
     if douyin.is_douyin_url(url):
         return douyin.probe_url(url)
+    if bilibili.is_bilibili_url(url):
+        return bilibili.probe_url(url)
     cmd = _base_cmd(cfg) + [
         "-J", "--flat-playlist", "--playlist-items", "1", "--no-warnings", url,
     ]
@@ -134,6 +137,8 @@ class YtdlpDownload(Engine):
         if douyin.is_douyin_url(url):
             return self._run_douyin(ctx, url, out_dir)
         height = int(ctx.params.get("height") or 0)
+        if bilibili.is_bilibili_url(url):
+            return self._run_bilibili(ctx, url, out_dir, height)
 
         cmd = _base_cmd(ctx.config, need_ffmpeg=True) + [
             "-f", format_selector(height),
@@ -232,4 +237,31 @@ class YtdlpDownload(Engine):
             return cancelled()
         if not result.get("ok"):
             return fail(result.get("error") or "抖音下载失败")
+        return ok(result["path"])
+
+    def _run_bilibili(self, ctx, url: str, out_dir: Path, height: int) -> dict:
+        """B 站走接口解析：未登录一般给 720P 单文件，登录后才是 DASH 双流。"""
+        def on_progress(event: dict) -> None:
+            if event.get("status") == "merging":
+                ctx.progress(None, "合并中")
+                return
+            total = event.get("total") or 0
+            done = event.get("downloaded") or 0
+            pct = round(min(100.0, done * 100.0 / total), 2) if total else None
+            ctx.progress(pct, "下载中")
+
+        rate = int(ctx.config.get("maxRateKB") or 0)
+        result = bilibili.download_url(
+            url, out_dir, height=height,
+            connections=int(ctx.params.get("connections")
+                            or ctx.config.get("defaultConnections") or 8),
+            rate_bytes=rate * 1024 if rate > 0 else 0,
+            proxies=ctx.config.proxies(),
+            on_progress=on_progress,
+            should_stop=lambda: self._stopped or ctx.should_stop(),
+        )
+        if result.get("cancelled"):
+            return cancelled()
+        if not result.get("ok"):
+            return fail(result.get("error") or "B 站下载失败")
         return ok(result["path"])

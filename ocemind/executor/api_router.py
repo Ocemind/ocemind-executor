@@ -14,6 +14,7 @@ from pathlib import Path
 from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import Response
 
+from . import gc
 from .engines import registry
 from .facade import Executor
 
@@ -24,7 +25,9 @@ def build_ui_router(executor: Executor) -> APIRouter:
     # ---------------------------------------------------------- 能力/用量
     @router.get("/capabilities")
     def capabilities():
+        from .. import __version__
         return {"capabilities": executor.capabilities(),
+                "app": {"version": __version__},
                 **executor.capability_health()}
 
     @router.get("/usage")
@@ -138,11 +141,30 @@ def build_ui_router(executor: Executor) -> APIRouter:
     def accounts():
         return {"accounts": executor.accounts()}
 
+    # 账号浏览器的磁盘占用与清理。放在动态路由前面，别被 /accounts/{id} 吃掉
+    @router.get("/accounts/gc")
+    def accounts_gc():
+        return gc.scan(executor.cfg, executor.accounts(), executor.pool.running())
+
+    @router.post("/accounts/gc")
+    def accounts_gc_clean(body: dict = Body(default={})):
+        result = gc.clean(executor.cfg, executor.accounts(),
+                          executor.pool.running(),
+                          orphans=bool(body.get("orphans")))
+        return {**result, "summary": gc.human_size(result["freed"])}
+
     @router.post("/accounts")
     def add_account(body: dict = Body(...)):
         try:
             return executor.add_account(body.get("platform", ""),
                                         body.get("label", ""))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/accounts/{account_id}/proxy")
+    def set_account_proxy(account_id: str, body: dict = Body(default={})):
+        try:
+            return executor.set_account_proxy(account_id, str(body.get("proxy") or ""))
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -172,7 +194,7 @@ def build_ui_router(executor: Executor) -> APIRouter:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @router.get("/accounts/{account_id}/frame.jpg")
-    def frame(account_id: str):
+    def frame(account_id: str, since: int = -1):
         acc = executor.store.get_account(account_id)
         if not acc:
             raise HTTPException(status_code=404, detail="账号不存在")
@@ -180,11 +202,19 @@ def build_ui_router(executor: Executor) -> APIRouter:
         if not sess.alive:
             # 没打开就返回 204，前端显示"点开始"而不是一张黑图
             return Response(status_code=204)
-        data = sess.screenshot()
+        data, seq = sess.current_frame()
+        if not data:
+            # 流没起来（老浏览器不支持 screencast）就退回掐图
+            data = sess.screenshot()
         if not data:
             return Response(status_code=204)
+        # since 是界面手上那一帧的序号：还是同一帧就只回 204，
+        # 别把同一张 JPEG 一遍遍传过去——空闲时这个接口几乎不耗东西
+        if seq and since == seq:
+            return Response(status_code=204, headers={"X-Frame-Seq": str(seq)})
         return Response(content=data, media_type="image/jpeg",
-                        headers={"Cache-Control": "no-store"})
+                        headers={"Cache-Control": "no-store",
+                                 "X-Frame-Seq": str(seq)})
 
     @router.post("/accounts/{account_id}/act")
     def act(account_id: str, body: dict = Body(...)):
@@ -193,15 +223,33 @@ def build_ui_router(executor: Executor) -> APIRouter:
             raise HTTPException(status_code=404, detail="账号不存在")
         sess = executor.pool.get(acc)
         kind = body.get("kind")
+        x = float(body.get("x") or 0)
+        y = float(body.get("y") or 0)
         try:
             if kind == "click":
-                sess.click(float(body.get("x") or 0), float(body.get("y") or 0))
+                sess.click(x, y, count=int(body.get("count") or 1),
+                           button=str(body.get("button") or "left"))
+            elif kind == "move":
+                sess.mouse_move(x, y)
+            elif kind == "wheel":
+                sess.wheel(int(body.get("dy") or 0), int(body.get("dx") or 0),
+                           int(x), int(y))
             elif kind == "type":
                 sess.type_text(str(body.get("text") or ""))
             elif kind == "key":
-                sess.press(str(body.get("key") or "Enter"))
+                # 按下和抬起分开来：中文输入法、组合键都靠这个顺序
+                event_type = "keyUp" if body.get("type") == "up" else "keyDown"
+                sess.key(event_type, str(body.get("key") or ""),
+                         code=str(body.get("code") or ""),
+                         vk=int(body.get("vk") or 0),
+                         text=str(body.get("text") or ""),
+                         modifiers=int(body.get("modifiers") or 0))
             elif kind == "scroll":
-                sess.scroll(int(body.get("delta") or 0))
+                sess.scroll(int(body.get("delta") or 0), int(x), int(y))
+            elif kind == "resize":
+                sess.resize(int(body.get("width") or 0),
+                            int(body.get("height") or 0),
+                            float(body.get("dpr") or 1.0))
             elif kind == "goto":
                 sess.goto(str(body.get("url") or ""))
             else:
@@ -210,12 +258,15 @@ def build_ui_router(executor: Executor) -> APIRouter:
             raise
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(exc)) from exc
-        return {"ok": True, "url": sess.current_url()}
+        if kind == "goto":
+            # 只有跳转才回地址；每敲一个键都去问一次页面，打字就卡了
+            return {"ok": True, "url": sess.current_url()}
+        return {"ok": True}
 
     # -------------------------------------------------------------- 发布
     @router.get("/publish")
     def publish_list(account_id: str = ""):
-        return {"records": executor.publish_list(account_id)}
+        return executor.publish_list(account_id)
 
     @router.post("/publish")
     def publish_create(body: dict = Body(...)):
@@ -229,10 +280,21 @@ def build_ui_router(executor: Executor) -> APIRouter:
     @router.post("/publish/{record_id}/approve")
     def publish_approve(record_id: str, body: dict = Body(...)):
         try:
-            return executor.publish_approve(record_id, body.get("snapshot_hash", ""))
+            return executor.publish_approve(
+                record_id, body.get("snapshot_hash", ""),
+                submit=bool(body.get("submit")),
+                verify_only=bool(body.get("verify_only")),
+                scheduled_at=body.get("scheduled_at") or None)
         except ValueError as exc:
             status = 409 if "快照" in str(exc) else 422
             raise HTTPException(status_code=status, detail=str(exc)) from exc
+
+    @router.post("/publish/{record_id}/cancel-schedule")
+    def publish_cancel_schedule(record_id: str):
+        try:
+            return executor.publish_cancel_schedule(record_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     # -------------------------------------------------------------- 连接
     @router.get("/connect")
@@ -346,7 +408,10 @@ def build_v1_router(executor: Executor) -> APIRouter:
     def publish_approve(request: Request, record_id: str, body: dict = Body(...)):
         require(request)
         try:
-            return executor.publish_approve(record_id, body.get("snapshot_hash", ""))
+            return executor.publish_approve(
+                record_id, body.get("snapshot_hash", ""),
+                submit=bool(body.get("submit")),
+                verify_only=bool(body.get("verify_only")))
         except ValueError as exc:
             status = 409 if "快照" in str(exc) else 422
             raise HTTPException(status_code=status, detail=str(exc)) from exc

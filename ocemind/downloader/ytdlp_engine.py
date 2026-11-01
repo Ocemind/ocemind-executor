@@ -7,7 +7,7 @@ import subprocess
 import threading
 from pathlib import Path
 
-from ocemind import douyin
+from ocemind import bilibili, douyin, ytdlp_updater
 
 from . import tools
 
@@ -39,13 +39,17 @@ def _env() -> dict:
     env = dict(os.environ)
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONUTF8"] = "1"
-    return env
+    # 用户在设置页更新过 yt-dlp 的话，子进程优先用新的那份
+    return ytdlp_updater.apply_env(env)
 
 
 def probe(url: str, cfg) -> dict:
     if douyin.is_douyin_url(url):
         # yt-dlp 解析抖音必然被签名挡住；这里只跟短链，不动浏览器
         return douyin.probe_url(url)
+    if bilibili.is_bilibili_url(url):
+        # 作品页现在对普通请求回 412，走接口拿标题和画质
+        return bilibili.probe_url(url)
     cmd = _base_cmd(cfg) + [
         "-J", "--flat-playlist", "--playlist-items", "1", "--no-warnings", url,
     ]
@@ -125,6 +129,8 @@ class VideoDownloader:
         out_dir.mkdir(parents=True, exist_ok=True)
         if douyin.is_douyin_url(url):
             return self._run_douyin(url, out_dir, on_progress)
+        if bilibili.is_bilibili_url(url):
+            return self._run_bilibili(url, out_dir, height, on_progress)
         cmd = _base_cmd(self.cfg, need_ffmpeg=True) + [
             "-f", format_selector(height),
             "--newline", "--no-color", "--no-mtime", "--no-warnings",
@@ -227,6 +233,32 @@ class VideoDownloader:
         rate_kb = int(self.cfg.get("maxRateKB") or 0)
         return douyin.download_url(
             url, out_dir,
+            connections=int(self.cfg.get("defaultConnections") or 8),
+            rate_bytes=rate_kb * 1024 if rate_kb > 0 else 0,
+            proxies=self.cfg.proxies(),
+            on_progress=report,
+            should_stop=lambda: self._stopped,
+        )
+
+    def _run_bilibili(self, url: str, out_dir: Path, height: int,
+                      on_progress=None) -> dict:
+        """B 站走接口解析；未登录一般给 720P 单文件，登录后是 DASH 双流。"""
+        def report(event: dict) -> None:
+            if not on_progress:
+                return
+            if event.get("status") == "merging":
+                on_progress({"status": "merging"})
+                return
+            on_progress({
+                "status": "downloading",
+                "downloaded": event.get("downloaded") or 0,
+                "total": event.get("total") or 0,
+                "filename": event.get("filename") or "",
+            })
+
+        rate_kb = int(self.cfg.get("maxRateKB") or 0)
+        return bilibili.download_url(
+            url, out_dir, height=height,
             connections=int(self.cfg.get("defaultConnections") or 8),
             rate_bytes=rate_kb * 1024 if rate_kb > 0 else 0,
             proxies=self.cfg.proxies(),

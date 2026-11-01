@@ -1,10 +1,11 @@
 """外部工具定位：yt-dlp / ffmpeg。"""
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
-from ocemind import toolchain
+from ocemind import toolchain, ytdlp_updater
 
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -39,9 +40,12 @@ def tool_versions(ytdlp_path: str = "", ffmpeg_path: str = "") -> dict:
     versions["ytdlp_cmd"] = " ".join(cmd)
     versions["ytdlp_source"] = toolchain.resolve("ytdlp", ytdlp_path)["source"]
     try:
+        # 源码运行时走 `python -m yt_dlp`，要靠 PYTHONPATH 才看得到外部更新
+        env = ytdlp_updater.apply_env(dict(os.environ))
         out = subprocess.run(
             cmd + ["--version"],
             capture_output=True, text=True, timeout=20, creationflags=CREATE_NO_WINDOW,
+            env=env,
         )
         versions["ytdlp"] = (out.stdout or out.stderr).strip().splitlines()[0] if out.returncode == 0 else "不可用"
     except Exception as exc:  # noqa: BLE001

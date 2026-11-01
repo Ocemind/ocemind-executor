@@ -1,0 +1,27 @@
+{
+  "_note": "分享短链域名，直接搬自 CR TubeGet 的 NeedRedirectedDomains（22 条，2026-11-01 从本机安装的 CRTubeGet.ini 里读出来的）。命中就跟一次跳转还原成真实地址。数据目录（%APPDATA%\\ocemind）里放同名文件可以覆盖本表，改完即生效，不用发版。",
+  "hosts": [
+    "v.douyin.com",
+    "vt.tiktok.com",
+    "vm.tiktok.com",
+    "www.gifshow.com",
+    "v.kuaishou.com",
+    "v.kuaishouapp.com",
+    "m.tb.cn",
+    "m.yxixy.com",
+    "xima.tv",
+    "t.cn",
+    "url.cn",
+    "xhslink.com",
+    "xhslink.cn",
+    "b23.tv",
+    "bv23.tv",
+    "bili2233.cn",
+    "fb.watch",
+    "meipai.com",
+    "mr.baidu.com",
+    "iqiyi.cn",
+    "novelquickapp.com",
+    "bmlxkyy.com"
+  ]
+}

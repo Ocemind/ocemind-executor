@@ -154,6 +154,13 @@ def ytdlp_command(explicit: str = "") -> list[str]:
 
 def run_ytdlp(argv: list[str]) -> int:
     """在 sidecar 自己的解释器里跑 yt-dlp 的 CLI。"""
+    from . import ytdlp_updater
+
+    # 用户自己更新过 yt-dlp 的话，用新版，别用编进包里的旧的
+    try:
+        ytdlp_updater.activate()
+    except Exception:  # noqa: BLE001
+        pass
     try:
         import yt_dlp
     except ImportError as exc:

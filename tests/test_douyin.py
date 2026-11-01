@@ -94,11 +94,44 @@ def test_collector_classifies_and_prefers_avc_high_bitrate():
     assert collector.has("video") and collector.has("audio")
 
 
+def test_collector_accepts_merged_stream_without_media_marker():
+    """成片流：路径里没有 media-video / media-audio，一条 mp4 自带音轨。"""
+    collector = douyin._Collector()
+    merged = ("https://v26-webf.douyinvod.com/x/6ae7a3cd/video/tos/cn/"
+              "tos-cn-ve-15/oUBZE951/?a=6383&br=965&mime_type=video_mp4")
+    collector.on_request(_Req(merged))
+    assert collector.classify(merged) == "merged"
+    assert collector.pick("merged") == merged
+    assert collector.has("merged") and not collector.has("video")
+
+
+def test_choose_streams_prefers_split_over_merged():
+    collector = douyin._Collector()
+    base = "https://v96-web.douyinvod.com/x/video/tos/cn/tos-cn-vd-0026/obj/"
+    collector.on_request(_Req(base + "avc/media-video-avc1/?br=1822"))
+    collector.on_request(_Req(base + "aud/media-audio-und-mp4a/?br=189"))
+    collector.on_request(_Req(base + "whole/?br=965&mime_type=video_mp4"))
+    video, audio, merged = douyin._choose_streams(collector)
+    assert "media-video" in video and "media-audio" in audio and merged is False
+
+
+def test_choose_streams_falls_back_to_merged():
+    collector = douyin._Collector()
+    whole = "https://v3-dy-o.zjcdn.com/x/video/tos/cn/tos-cn-ve-15/abc/?br=965"
+    collector.on_request(_Req(whole))
+    video, audio, merged = douyin._choose_streams(collector)
+    assert video == whole and audio == "" and merged is True
+
+
 def test_collector_ignores_unrelated_requests():
     collector = douyin._Collector()
     collector.on_request(_Req("https://www.douyin.com/aweme/v1/web/hot/search/list/"))
     collector.on_request(_Req("https://example.com/media-video-avc1/"))
+    # 播放器的占位短片不是作品本身
+    collector.on_request(_Req(
+        "https://lf-douyin-pc-web.douyinstatic.com/obj/douyin-pc-web/uuu_265.mp4"))
     assert not collector.has("video") and not collector.has("audio")
+    assert not collector.has("merged")
 
 
 # ---------------------------------------------------------------- 杂项

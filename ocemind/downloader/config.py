@@ -27,6 +27,9 @@ DEFAULT_SETTINGS = {
     "defaultDir": _default_dir(),
     "defaultConnections": 8,
     "maxConcurrent": 3,
+    # 批量粘链接时，两次启动之间至少隔这么久（秒）。同时起 5 条会把带宽
+    # 切碎，站点那边也像在刷。0 = 不停顿，恢复成「有几个空位就起几个」。
+    "startStagger": 1.2,
     "maxRateKB": 0,              # 0 = 不限速
     "minChunkMB": 2,             # 小于该体积不走分片
     "askVideoQuality": True,

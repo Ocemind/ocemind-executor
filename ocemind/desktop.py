@@ -28,6 +28,32 @@ from ocemind.downloader.manager import TaskManager
 APP_NAME = "Ocemind 内容执行器"
 MUTEX_NAME = "Local\\OcemindExecutor_SingleInstance"
 
+# 网页的底线：1024×680。跟 style.css 里 #app 的 min-width / min-height、
+# Tauri 壳的 min_inner_size 是同一个数，三处得一起改（有测试钉着）。
+MIN_CLIENT_W, MIN_CLIENT_H = 1024, 680
+
+
+def _window_min_size(client_w: int = MIN_CLIENT_W, client_h: int = MIN_CLIENT_H):
+    """把「客户区不小于多少」换算成「窗口外框不小于多少」。
+
+    pywebview 的 min_size 量的是窗口外框（Form.MinimumSize），网页拿到的是
+    扣掉标题栏和边框之后的客户区。按外框设 1024×680 的话，客户区只剩
+    1011×644，窗口拖到底反而冒出滚动条。这里按 96 DPI 的边框补一圈，
+    窗口拖到头时网页那边正好还剩 1024×680。
+    """
+    if sys.platform != "win32":
+        return (client_w, client_h)
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        rect = wintypes.RECT(0, 0, client_w, client_h)
+        ctypes.windll.user32.AdjustWindowRectExForDpi(
+            ctypes.byref(rect), 0x00CF0000, False, 0, 96)  # WS_OVERLAPPEDWINDOW
+        return (rect.right - rect.left, rect.bottom - rect.top)
+    except Exception:  # noqa: BLE001
+        return (client_w, client_h)
+
 
 def _enable_dpi_awareness() -> None:
     if sys.platform != "win32":
@@ -158,8 +184,9 @@ def _run_browser(base: str) -> None:
 def _run_window(base: str) -> None:
     import webview
 
+    # 打开 1280×820；最小客户区 1024×680——再小布局就挤散了，窗口直接拖不动。
     webview.create_window(
-        APP_NAME, base, width=1280, height=820, min_size=(980, 640),
+        APP_NAME, base, width=1280, height=820, min_size=_window_min_size(),
         background_color="#f6f7f9", js_api=JsApi(),
     )
     webview.start(debug=False)

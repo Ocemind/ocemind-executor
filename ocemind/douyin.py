@@ -6,6 +6,10 @@
 打开作品页，页面自己完成签名、自己拉流；我们只从网络请求里捡出视频流
 和音频流的地址，再用 Range 分段下载，最后 ffmpeg 无损合流。
 
+播放器给的流有两种：分离的 media-video + media-audio（要合流），
+和一条自带音轨的成片流（路径里没有 media-* 标记，页面里常见于短作品）。
+两种都得接，只认前者会误报「没拿到视频流」。
+
 播放地址带签名和时效，所以解析结果只缓存 10 分钟；下载失败重试会重新解析。
 """
 from __future__ import annotations
@@ -14,7 +18,6 @@ import importlib.util
 import os
 import re
 import shutil
-import subprocess
 import threading
 import time
 from pathlib import Path
@@ -23,7 +26,7 @@ from urllib.parse import parse_qs, urlparse
 import requests
 
 from .downloader.http_downloader import SegmentedDownload, sanitize_filename
-from .paths import ffmpeg_exe as find_ffmpeg
+from .downloader.streams import merge_av, probe_duration, run_stream
 from .paths import find_chrome
 
 UA = (
@@ -142,26 +145,42 @@ def _launch(pw, proxies: dict | None = None):
 
 
 class _Collector:
-    """从播放器的网络请求里捡视频流 / 音频流地址。"""
+    """从播放器的网络请求里捡视频流 / 音频流地址。
+
+    播放器有两条拉流路子：分离的 `media-video-*` + `media-audio-*`，
+    以及路径里没有 media-* 标记的成片流（一条 mp4 自带音轨）。两条都收，
+    分离流优先——码率通常更高，而且要合流。再把播放器元素身上的 currentSrc
+    也当一条来源兜底，请求事件偶尔会漏。
+    """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._urls: dict[str, dict[str, str]] = {"video": {}, "audio": {}}
+        self._urls: dict[str, dict[str, str]] = {
+            "video": {}, "audio": {}, "merged": {}}
 
-    def on_request(self, request) -> None:
-        url = request.url or ""
+    @staticmethod
+    def classify(url: str) -> str:
         if "/video/tos/" not in url:
-            return
+            return ""
         path = urlparse(url).path.lower()
         if "media-audio" in path:
-            kind = "audio"
-        elif "media-video" in path:
-            kind = "video"
-        else:
+            return "audio"
+        if "media-video" in path:
+            return "video"
+        # 没有 media-* 标记：成片流，音画在同一条 mp4 里
+        return "merged"
+
+    def offer(self, url: str) -> None:
+        kind = self.classify(url or "")
+        if not kind:
             return
+        path = urlparse(url).path.lower()
         with self._lock:
             # 同一个流会带不同的临时签名参数，按 path 去重，保留最后一条
             self._urls[kind][path] = url
+
+    def on_request(self, request) -> None:
+        self.offer(request.url or "")
 
     def has(self, kind: str) -> bool:
         with self._lock:
@@ -189,13 +208,42 @@ def _score(url: str) -> tuple[int, int]:
     return (1 if "avc1" in path else 0, _bitrate(url))
 
 
-_META_JS = """
+def _choose_streams(collector: _Collector) -> tuple[str, str, bool]:
+    """挑流：分离流优先，没有再退回成片流。
+
+    返回 (视频地址, 音频地址, 是否成片流)。成片流自带音轨，音频地址留空，
+    下载时也就不会再走 ffmpeg 合流。
+    """
+    video_url = collector.pick("video")
+    merged = False
+    if not video_url:
+        video_url = collector.pick("merged")
+        merged = bool(video_url)
+    audio_url = "" if merged else collector.pick("audio")
+    return video_url, audio_url, merged
+
+
+_SRC_JS = """
+() => {
+  const v = document.querySelector('video');
+  return v ? (v.currentSrc || v.src || '') : '';
+}
+"""
+
+
+_META_JS = r"""
 () => {
   const v = document.querySelector('video');
   const meta = (n) => (document.querySelector(`meta[property="${n}"]`)
                        || document.querySelector(`meta[name="${n}"]`) || {}).content || '';
   let duration = 0;
-  try { if (v && Number.isFinite(v.duration)) duration = v.duration; } catch (e) {}
+  try {
+    // 页面先拿一条 2.6 秒的占位短片（uuu_265.mp4）顶着播放器，
+    // 别把它的时长当成作品时长；成片下载完还会再用 ffmpeg 核一遍
+    const src = (v && (v.currentSrc || v.src)) || '';
+    if (v && Number.isFinite(v.duration) && !/douyinstatic\.com/.test(src))
+      duration = v.duration;
+  } catch (e) {}
   return {title: document.title || '', desc: meta('description'),
           image: meta('og:image'), poster: (v && v.poster) || '',
           duration: duration};
@@ -247,8 +295,16 @@ def extract(aweme_id: str, page_url: str = "", timeout: float = 30,
                                 " if (v) { v.muted = true; v.play && v.play().catch(() => {}); } }")
                         except Exception:  # noqa: BLE001
                             pass
-                    if collector.has("video") and (
-                            collector.has("audio") or time.time() - started > 12):
+                    # 请求事件偶尔漏一条，播放器元素自己身上就挂着当前流地址
+                    if (not collector.has("video") and not collector.has("merged")
+                            and time.time() - started > 3):
+                        try:
+                            collector.offer(page.evaluate(_SRC_JS))
+                        except Exception:  # noqa: BLE001
+                            pass
+                    if (collector.has("video") or collector.has("merged")) and (
+                            collector.has("audio") or collector.has("merged")
+                            or time.time() - started > 12):
                         break
                 final_url = page.url or target
                 meta = page.evaluate(_META_JS)
@@ -258,8 +314,7 @@ def extract(aweme_id: str, page_url: str = "", timeout: float = 30,
         return {"ok": False,
                 "error": f"打开抖音页面失败: {type(exc).__name__}: {exc}"}
 
-    video_url = collector.pick("video")
-    audio_url = collector.pick("audio")
+    video_url, audio_url, merged = _choose_streams(collector)
     if not video_url:
         hint = "（页面停在验证页）" if "verify" in final_url else ""
         return {"ok": False,
@@ -279,7 +334,8 @@ def extract(aweme_id: str, page_url: str = "", timeout: float = 30,
         "thumbnail": (meta or {}).get("image") or (meta or {}).get("poster") or "",
         "video_url": video_url,
         "audio_url": audio_url,
-        "has_audio": bool(audio_url),
+        "merged": merged,
+        "has_audio": merged or bool(audio_url),
     }
     _remember(aweme_id, info)
     return info
@@ -382,9 +438,11 @@ def download_media(info: dict, out_dir, connections: int = 8,
     audio_path = work / "audio.m4a"
 
     headers = {"Referer": REFERER, "Origin": "https://www.douyin.com"}
+    # 成片流里音轨已经混好了，再拉一条音频合流反而会把片子弄坏
+    audio_url = "" if info.get("merged") else (info.get("audio_url") or "")
     streams = [("video", info["video_url"], video_path)]
-    if info.get("audio_url"):
-        streams.append(("audio", info["audio_url"], audio_path))
+    if audio_url:
+        streams.append(("audio", audio_url, audio_path))
 
     engines: list[SegmentedDownload] = []
     for label, stream_url, path in streams:
@@ -412,7 +470,7 @@ def download_media(info: dict, out_dir, connections: int = 8,
                     "filename": dest.name,
                 })
 
-        result = _run_stream(engine, report, should_stop)
+        result = run_stream(engine, report, should_stop)
         if result.get("cancelled"):
             return {"ok": False, "cancelled": True, "error": ""}
         if not result.get("ok"):
@@ -420,12 +478,12 @@ def download_media(info: dict, out_dir, connections: int = 8,
         base += engine.total
         report(engine.downloaded())
 
-    if info.get("audio_url"):
+    if audio_url:
         if on_progress:
             on_progress({"status": "merging"})
-        merged = _merge(video_path, audio_path, dest)
-        if not merged.get("ok"):
-            return merged
+        merged_ok = merge_av(video_path, audio_path, dest)
+        if not merged_ok.get("ok"):
+            return merged_ok
     else:
         try:
             os.replace(video_path, dest)
@@ -441,55 +499,8 @@ def download_media(info: dict, out_dir, connections: int = 8,
         on_progress({"status": "downloading", "downloaded": size,
                      "total": size, "filename": dest.name})
     return {"ok": True, "path": str(dest), "title": title,
-            "duration": info.get("duration") or 0,
+            "duration": probe_duration(dest) or (info.get("duration") or 0),
             "thumbnail": info.get("thumbnail") or "", "size": size}
-
-
-def _run_stream(engine: SegmentedDownload, report, should_stop) -> dict:
-    result: dict = {}
-    thread = threading.Thread(target=lambda: result.update(engine.run()),
-                              daemon=True)
-    thread.start()
-    while thread.is_alive():
-        if should_stop and should_stop():
-            engine.stop()
-        report(engine.downloaded())
-        time.sleep(0.4)
-    thread.join()
-    return result or {"ok": False, "error": "下载线程没有返回结果"}
-
-
-def _merge(video: Path, audio: Path, dest: Path) -> dict:
-    ff = find_ffmpeg()
-    if not ff:
-        return {"ok": False, "error": "没有 ffmpeg，视频和音频合不了"}
-    base = [ff, "-hide_banner", "-loglevel", "error", "-y",
-            "-i", str(video), "-i", str(audio),
-            "-map", "0:v:0?", "-map", "1:a:0?", "-c", "copy",
-            "-movflags", "+faststart", str(dest)]
-    try:
-        proc = subprocess.run(base, capture_output=True, text=True,
-                              encoding="utf-8", errors="replace", timeout=900)
-    except Exception as exc:  # noqa: BLE001
-        return {"ok": False, "error": f"合并失败: {exc}"}
-    if proc.returncode == 0 and dest.exists() and dest.stat().st_size > 0:
-        return {"ok": True}
-
-    # 音轨不是 aac 时 -c copy 进不了 mp4，重编码一次音频
-    retry = [ff, "-hide_banner", "-loglevel", "error", "-y",
-             "-i", str(video), "-i", str(audio),
-             "-map", "0:v:0?", "-map", "1:a:0?", "-c:v", "copy",
-             "-c:a", "aac", "-b:a", "192k",
-             "-movflags", "+faststart", str(dest)]
-    try:
-        proc2 = subprocess.run(retry, capture_output=True, text=True,
-                               encoding="utf-8", errors="replace", timeout=1800)
-    except Exception as exc:  # noqa: BLE001
-        return {"ok": False, "error": f"合并失败: {exc}"}
-    if proc2.returncode != 0 or not dest.exists() or dest.stat().st_size == 0:
-        detail = (proc2.stderr or proc.stderr or "").strip().splitlines()
-        return {"ok": False, "error": f"ffmpeg 合并失败: {detail[-1] if detail else proc2.returncode}"}
-    return {"ok": True}
 
 
 def _unique_path(path: Path) -> Path:

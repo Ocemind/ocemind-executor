@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from ocemind import core, douyin
-from ocemind.links import first_url
+from ocemind.links import expand, first_url, is_short
 
 from . import config as config_mod
 from .course_engine import CourseDownloader, tmp_dir_for
@@ -77,10 +77,13 @@ class TaskManager:
         self.active: set[str] = set()
         self._dirty = False
         self._last_save = 0.0
+        self._last_start = 0.0        # 上一个任务的启动时刻，批量错峰用
         self._running = True
         # 由 facade 注入；执行器任务要记用量（预算门控）和发布会话池
         self.store = None
         self.pool = None
+        # 别的模块想借这个 0.4 秒的拍子做事（定时发布），挂进来就行
+        self.tick_hooks: list = []
         self._load()
         # 测试里要能只测数据层，不让后台线程把手一动就真去下载
         if start_scheduler:
@@ -136,6 +139,13 @@ class TaskManager:
         url = first_url(raw) or raw
         if "://" not in url:
             url = "https://" + url
+        # 分享短链还原成真实地址：界面能说清楚它指向哪个站，选适配器也有依据。
+        # 跟不动就按原样处理——网络问题不该让任务加不进来。
+        url_original = ""
+        if is_short(url):
+            resolved = expand(url)
+            if resolved:
+                url_original, url = url, resolved
         directory = directory or self.cfg.get("defaultDir")
         kind = kind if kind in KINDS else self._guess_kind(url)
         course_key = self._course_key(url, directory) if kind == "course" else ""
@@ -156,6 +166,7 @@ class TaskManager:
         task = {
             "id": uuid.uuid4().hex[:12],
             "url": url,
+            "url_original": url_original,
             "kind": kind,
             "status": "queued",
             "title": title or url,
@@ -373,15 +384,52 @@ class TaskManager:
             time.sleep(0.4)
             try:
                 self._sample_speeds()
-                max_conc = int(self.cfg.get("maxConcurrent") or 3)
-                with self.lock:
-                    queued = [t for t in self.tasks.values() if t["status"] == "queued"]
-                    slots = max_conc - len(self.active)
-                for task in queued[: max(0, slots)]:
-                    self._start(task["id"])
+                now = _now()
+                ready = self._pick_starts(now)
+                for task_id in ready:
+                    self._start(task_id)
+                if ready:
+                    self._last_start = now
                 self._save()
+                for hook in list(self.tick_hooks):
+                    try:
+                        hook(now)
+                    except Exception:  # noqa: BLE001
+                        # 定时发布挂了不能把下载调度带停
+                        pass
             except Exception:  # noqa: BLE001
                 pass
+
+    def add_tick_hook(self, hook) -> None:
+        """挂一个每拍都调的函数，参数是当前时间戳。重复挂同一个不会调两次。"""
+        with self.lock:
+            if hook not in self.tick_hooks:
+                self.tick_hooks.append(hook)
+
+    def _pick_starts(self, now: float) -> list[str]:
+        """这一拍该启动哪几条任务。
+
+        一次粘 5 条链接时，把 3 个空位一口气填满等于让它们抢同一条带宽，
+        站点那边看着也像在刷——所以按加入顺序一条一条放，每次间隔
+        `startStagger` 秒。间隔设成 0 就退回「有空位就填满」的老行为。
+        """
+        max_conc = int(self.cfg.get("maxConcurrent") or 3)
+        with self.lock:
+            slots = max_conc - len(self.active)
+            if slots <= 0:
+                return []
+            queued = sorted(
+                (t for t in self.tasks.values() if t["status"] == "queued"),
+                key=lambda t: t.get("created_at") or 0,
+            )
+        if not queued:
+            return []
+        gap = float(self.cfg.get("startStagger") or 0)
+        if gap > 0 and (now - self._last_start) < gap:
+            return []
+        if gap <= 0:
+            return [t["id"] for t in queued[:slots]]
+        return [queued[0]["id"]]
 
     def _sample_speeds(self) -> None:
         now = _now()

@@ -601,10 +601,11 @@ pub fn run() {
                         && (cfg!(windows)
                             || (cfg!(target_os = "linux")
                                 && std::env::var_os("APPIMAGE").is_some()));
+                    let version = app.package_info().version.to_string();
                     let init = format!(
                         "window.__OCEMIND_PORT__ = {port}; window.__OCEMIND_VERSION__ = {:?}; \
                          window.__OCEMIND_PORTABLE__ = {}; window.__OCEMIND_UPDATER__ = {};",
-                        app.package_info().version.to_string(),
+                        version,
                         portable,
                         updater,
                     );
@@ -613,9 +614,12 @@ pub fn run() {
                         "main",
                         WebviewUrl::App("index.html".into()),
                     )
-                    .title("Ocemind 内容执行器")
+                    // 标题栏只有「内容执行器 + 版本号」，不带前缀也不带图标
+                    .title(format!("内容执行器 {version}"))
+                    // 打开 1280×820；最小 1024×680——再小布局就挤散了，
+                    // 和 style.css 里 #app 的 min-width / min-height 是同一对数
                     .inner_size(1280.0, 820.0)
-                    .min_inner_size(980.0, 640.0)
+                    .min_inner_size(1024.0, 680.0)
                     .disable_drag_drop_handler()
                     .initialization_script(&init)
                     .build()?;

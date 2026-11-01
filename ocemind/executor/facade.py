@@ -15,8 +15,10 @@ from pathlib import Path
 from . import backends, local_install
 from .accounts.browser import BrowserPool, read_cookie_expiry
 from .accounts.platforms import all_platforms, platform_info
+from .accounts.proxy import display as proxy_display, normalize as normalize_proxy
 from .engines import registry
 from .engines.engine_map import verify_answer
+from .publish import states
 from .publish.engine import snapshot_hash
 from .store import Store
 
@@ -26,6 +28,25 @@ STALE_DAYS = 7             # 超过这个天数没成功登录过，即使 cooki
 
 def canonical(value) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _publish_view(rec: dict) -> dict:
+    """给界面用的：状态的中文、颜色、下一步能点什么。"""
+    item = dict(rec)
+    item["state_text"] = states.label(rec.get("state") or "")
+    item["tone"] = states.tone(rec.get("state") or "")
+    item["hint"] = states.hint(rec.get("state") or "")
+    item["can_retry"] = rec.get("state") in states.RETRYABLE
+    item["can_verify"] = rec.get("state") in (states.REVIEWING, states.MANUAL)
+    item["can_cancel_schedule"] = rec.get("state") == states.SCHEDULED
+    item["files"] = (rec.get("result") or {}).get("files") or []
+    item["title"] = ((rec.get("result") or {}).get("meta") or {}).get("title") or ""
+    item["error"] = (rec.get("result") or {}).get("error") or ""
+    item["scheduled_at"] = (rec.get("result") or {}).get("scheduled_at") or 0
+    item["scheduled_missed"] = (rec.get("result") or {}).get("scheduled_missed") or 0
+    if item["scheduled_missed"]:
+        item["hint"] = "错过的定时：软件关着的时候到点了，没有补发。确认内容没问题再重新准备"
+    return item
 
 
 def file_fingerprint(path: str) -> str:
@@ -64,6 +85,15 @@ class Executor:
         self.pool = BrowserPool(cfg)
         manager.store = self.store
         manager.pool = self.pool
+        # 定时发布借下载调度器那个 0.4 秒的拍子
+        manager.add_tick_hook(self._publish_tick_hook)
+
+    def _publish_tick_hook(self, now: float) -> None:
+        # 调度器 0.4 秒一拍，定时发布按秒看就够了，不用每拍都查库
+        if now - getattr(self, "_last_publish_tick", 0.0) < 5.0:
+            return
+        self._last_publish_tick = now
+        self.publish_tick(now)
 
     def close(self) -> None:
         try:
@@ -277,6 +307,15 @@ class Executor:
             item.update(self._account_state(acc, now))
             item["platform_name"] = platform_info(acc["platform"]).get("name", acc["platform"])
             item["running"] = acc["id"] in self.pool.running()
+            # 界面上的地址栏跟着这里走：只在浏览器真开着时才去问，问不到就当空
+            item["current_url"] = ""
+            if item["running"]:
+                try:
+                    item["current_url"] = self.pool.get(acc).current_url()
+                except Exception:  # noqa: BLE001
+                    pass
+            item["proxy"] = acc.get("proxy") or ""
+            item["proxy_display"] = proxy_display(item["proxy"])
             result.append(item)
         return result
 
@@ -313,11 +352,39 @@ class Executor:
             "label": (label or "").strip() or platform_info(platform)["name"],
             "profile_dir": str(profile), "enabled": 1,
             "last_ok_at": None, "last_check_at": None,
-            "cookie_expiry": None, "status": "never", "note": "",
+            "cookie_expiry": None, "status": "never", "note": "", "proxy": "",
             "created_at": time.time(),
         }
         self.store.upsert_account(acc)
         return acc
+
+    def set_account_proxy(self, account_id: str, proxy: str) -> dict:
+        """给账号配浏览器代理。空串＝直连。
+
+        改了代理必须把浏览器关掉重开——`--proxy-server` 只在启动时生效，
+        Chrome 没有运行中换代理的接口。所以这里顺带重启，而不是留一个
+        「显示已配代理、实际还在直连」的状态。
+        """
+        acc = self.store.get_account(account_id)
+        if not acc:
+            raise ValueError("账号不存在")
+        clean = normalize_proxy(proxy)
+        if clean == (acc.get("proxy") or ""):
+            return {"ok": True, "proxy": clean, "changed": False}
+
+        restarted = account_id in self.pool.running()
+        if restarted:
+            self.pool.close(account_id)
+        acc["proxy"] = clean
+        self.store.upsert_account(acc)
+        self.pool.refresh(acc)
+        return {
+            "ok": True,
+            "proxy": clean,
+            "display": proxy_display(clean),
+            "changed": True,
+            "restarted": restarted,
+        }
 
     def delete_account(self, account_id: str) -> None:
         self.pool.close(account_id)
@@ -390,34 +457,165 @@ class Executor:
         self.store.upsert_publish(record)
         return record
 
-    def publish_approve(self, record_id: str, digest: str) -> dict:
+    def publish_approve(self, record_id: str, digest: str, *,
+                        submit: bool = False, verify_only: bool = False,
+                        scheduled_at: float | None = None) -> dict:
+        """批准一条发布。
+
+        `scheduled_at` 给了未来时间就只排在「定时待发」，到点由调度器派发；
+        `verify_only=True` 时只去后台复查，不重传不重发。
+        """
         rec = self.store.get_publish(record_id)
         if not rec:
             raise ValueError("发布记录不存在")
         if rec["snapshot_hash"] != digest:
             raise ValueError("快照不一致：文件或内容在批准之后改过了，请重新准备")
-        if rec["state"] not in ("draft", "failed"):
-            raise ValueError(f"当前状态不能发布：{rec['state']}")
+        if verify_only:
+            if rec["state"] not in (states.REVIEWING, states.MANUAL):
+                raise ValueError(f"当前状态不用复查：{states.label(rec['state'])}")
+        elif rec["state"] not in states.RETRYABLE:
+            raise ValueError(f"当前状态不能发布：{states.label(rec['state'])}")
 
+        if scheduled_at and not verify_only:
+            when = float(scheduled_at)
+            if when > time.time() + 5:
+                payload = dict(rec.get("result") or {})
+                payload["scheduled_at"] = when
+                # 到点时按当时的决定派发：要不要顺手点提交
+                payload["submit"] = bool(submit)
+                rec["result"] = payload
+                rec["state"] = states.SCHEDULED
+                rec["updated_at"] = time.time()
+                self.store.upsert_publish(rec)
+                return {"record": _publish_view(rec), "job": None}
+
+        task = self._publish_task(rec, submit=submit, verify_only=verify_only)
+        rec["job_id"] = task["id"]
+        rec["state"] = states.APPROVED
+        self.store.upsert_publish(rec)
+        return {"record": _publish_view(rec), "job": self.manager.public(task)}
+
+    def _publish_task(self, rec: dict, *, submit: bool,
+                      verify_only: bool) -> dict:
+        """按记录内容往队列里放一个发布/复查任务。"""
         payload = rec.get("result") or {}
         files = payload.get("files") or []
         meta = payload.get("meta") or {}
         label = meta.get("title") or (Path(files[0]).stem if files else "发布")
-        task = self.manager.add_capability(
+        params = {"meta": meta, "account_id": rec["account_id"],
+                  "verify": True, "submit": bool(submit)}
+        if verify_only:
+            params["verify_only"] = True
+        return self.manager.add_capability(
             "publish.browser",
             {"files": files, "account_id": rec["account_id"]},
-            {"meta": meta, "account_id": rec["account_id"], "verify": True},
-            title=f"发布 · {label}",
-            idem=make_idem("publish.browser", {"files": files},
-                           {"account_id": rec["account_id"], "meta": meta}),
+            params,
+            title=(f"复查 · {label}" if verify_only else f"发布 · {label}"),
+            # 复查每次都要真去后台看一遍，不能命中上一次的幂等键
+            idem="" if verify_only else make_idem(
+                "publish.browser", {"files": files},
+                {"account_id": rec["account_id"], "meta": meta,
+                 "submit": bool(submit)}),
         )
-        rec["job_id"] = task["id"]
-        rec["state"] = "approved"
-        self.store.upsert_publish(rec)
-        return {"record": rec, "job": self.manager.public(task)}
 
-    def publish_list(self, account_id: str = "") -> list[dict]:
-        return self.store.list_publish(account_id)
+    # ------------------------------------------------------------ 定时发布
+
+    #: 到点没派发出去的宽限。App 关着错过了时间，超过这个窗口就不补发了——
+    #: 半夜三点点发布、早上九点突然发出去，比没发更糟
+    SCHEDULE_GRACE = 30 * 60
+
+    def publish_cancel_schedule(self, record_id: str) -> dict:
+        rec = self.store.get_publish(record_id)
+        if not rec:
+            raise ValueError("发布记录不存在")
+        if rec["state"] != states.SCHEDULED:
+            raise ValueError(f"这条不是定时发布：{states.label(rec['state'])}")
+        payload = dict(rec.get("result") or {})
+        payload.pop("scheduled_at", None)
+        rec["result"] = payload
+        rec["state"] = states.DRAFT
+        rec["updated_at"] = time.time()
+        self.store.upsert_publish(rec)
+        return _publish_view(rec)
+
+    def publish_tick(self, now: float | None = None) -> list[str]:
+        """调度器每拍调一次：到点的定时发布派发出去，错过的标成需人工。
+
+        跟着下载调度器同一个拍子跑，不用再起一个线程。
+        """
+        now = time.time() if now is None else float(now)
+        fired: list[str] = []
+        for rec in self.store.list_publish_by_state(states.SCHEDULED):
+            at = (rec.get("result") or {}).get("scheduled_at") or 0
+            if not at or at > now:
+                continue
+            payload = dict(rec.get("result") or {})
+            if now - at > self.SCHEDULE_GRACE:
+                payload["scheduled_missed"] = at
+                rec["result"] = payload
+                rec["state"] = states.MANUAL
+                rec["updated_at"] = now
+                self.store.upsert_publish(rec)
+                continue
+            try:
+                task = self._publish_task(rec, submit=bool(payload.get("submit")),
+                                          verify_only=False)
+            except Exception as exc:  # noqa: BLE001
+                payload["error"] = f"定时发布没排上：{exc}"
+                rec["result"] = payload
+                rec["state"] = states.FAILED
+                rec["updated_at"] = now
+                self.store.upsert_publish(rec)
+                continue
+            payload.pop("scheduled_at", None)
+            payload["fired_at"] = now
+            rec["result"] = payload
+            rec["job_id"] = task["id"]
+            rec["state"] = states.APPROVED
+            rec["updated_at"] = now
+            self.store.upsert_publish(rec)
+            fired.append(rec["id"])
+        return fired
+
+    def publish_list(self, account_id: str = "") -> dict:
+        """发布记录 + 从任务结果同步出来的当前状态。
+
+        发布是异步的：批准之后状态要跟着任务走。这里在每次查询时对齐一次，
+        比在每个结束分支里回调省事，也不会因为软件重启丢掉状态。
+        """
+        rows = self.store.list_publish(account_id)
+        for rec in rows:
+            self._sync_publish(rec)
+        rows.sort(key=lambda r: r.get("created_at") or 0, reverse=True)
+        return {"records": [_publish_view(r) for r in rows],
+                "counts": states.summary(rows)}
+
+    def _sync_publish(self, rec: dict) -> bool:
+        """把记录推进到任务当前的阶段。返回是否有变化（变了才写库）。"""
+        job_id = rec.get("job_id") or ""
+        if not job_id or rec["state"] in ("draft", states.SCHEDULED):
+            return False
+        job = self.manager.get(job_id)
+        if not job:
+            return False
+        engine_state = (job.get("meta") or {}).get("publish_state") or ""
+        new_state = states.derive(job.get("status") or "", engine_state,
+                                  job.get("error") or "")
+        result = dict(rec.get("result") or {})
+        error = job.get("error") or ""
+        stage = job.get("stage") or ""
+        moved = new_state != rec["state"]
+        detail_changed = (result.get("error") or "") != error or \
+                         (result.get("stage") or "") != stage
+        if moved or detail_changed:
+            result["error"] = error
+            result["stage"] = stage
+            rec["result"] = result
+            rec["state"] = new_state
+            rec["updated_at"] = time.time()
+            self.store.upsert_publish(rec)
+        return moved
+
 
     # -------------------------------------------------------------- 用量
     def usage(self) -> dict:

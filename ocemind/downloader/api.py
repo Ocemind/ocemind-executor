@@ -11,7 +11,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from ocemind import __version__, auth, core, douyin, paths
+from ocemind import __version__, auth, core, douyin, paths, ytdlp_updater
+from ocemind import bilibili
 from ocemind.cookies import (cookie_status, find_cookie_path, find_ko_token,
                               load_cookies, parse_netscape)
 from ocemind.links import first_url
@@ -152,7 +153,35 @@ def create_app(cfg: Config, manager: TaskManager) -> FastAPI:
     @app.get("/api/system")
     def system():
         versions = tools.tool_versions(cfg.get("ytdlpPath") or "", cfg.get("ffmpegPath") or "")
-        return {"settings": dict(cfg.data), "tools": versions}
+        # home 给「说明须知」用：配置和日志到底躺哪儿，用户得能自己找到
+        return {"settings": dict(cfg.data), "tools": versions, "home": str(cfg.home)}
+
+    # ---- yt-dlp 自更新（站点改版快，不该等软件发版） ----
+    @app.get("/api/tools/ytdlp")
+    def ytdlp_status():
+        return {"ok": True, **ytdlp_updater.effective()}
+
+    @app.post("/api/tools/ytdlp/check")
+    def ytdlp_check():
+        return ytdlp_updater.check(cfg)
+
+    @app.post("/api/tools/ytdlp/update")
+    def ytdlp_update():
+        found = ytdlp_updater.check(cfg)
+        if not found.get("ok"):
+            raise HTTPException(status_code=502,
+                                detail=found.get("error") or "连不上 PyPI")
+        if not found.get("has_update"):
+            return {"ok": True, "changed": False, "version": found["current"]}
+        done = ytdlp_updater.install(cfg, found["url"], found.get("sha256", ""))
+        if not done.get("ok"):
+            raise HTTPException(status_code=500, detail=done.get("error") or "安装失败")
+        return {"ok": True, "changed": True, "version": done["version"]}
+
+    @app.post("/api/tools/ytdlp/revert")
+    def ytdlp_revert():
+        ytdlp_updater.remove_external()
+        return {"ok": True, **ytdlp_updater.effective()}
 
     @app.get("/api/tasks")
     def list_tasks():
@@ -214,6 +243,13 @@ def create_app(cfg: Config, manager: TaskManager) -> FastAPI:
             # 抖音不走直链兜底：分享页本身是一张网页，探测成 file 会把
             # HTML 当成视频加进队列
             info = douyin.probe_url(url)
+            if not info.get("ok"):
+                return JSONResponse({"ok": False, "error": info.get("error")},
+                                    status_code=200)
+            return info
+        if bilibili.is_bilibili_url(url):
+            # 同理，B 站走接口探测，失败也不拿作品页当直链
+            info = bilibili.probe_url(url)
             if not info.get("ok"):
                 return JSONResponse({"ok": False, "error": info.get("error")},
                                     status_code=200)

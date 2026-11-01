@@ -98,13 +98,13 @@
         pending = version || null;
         if (pending) setState("found", "发现新版本 v" + pending + " · 点此安装");
         else if (!silent) setState("idle", "已是最新", "当前 v" + (window.__OCEMIND_VERSION__ || ""));
-        else setState("idle", "检查更新");
+        else setState("idle", "检测更新");
       }).catch(function (err) {
         pending = null;
         failures += 1;
         errText = err && err.message ? err.message : String(err);
         if (silent) {                       // 启动时网络不通很常见，留个重试入口就行
-          setState("idle", "检查更新", errText);
+          setState("idle", "检测更新", errText);
           return;
         }
         /* GitHub 在有些网络里就是连不上，重试多少次都一样。第二次失败就把

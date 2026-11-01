@@ -15,7 +15,7 @@ from ocemind.core import parse_course_url, run_one
 def build_parser():
     ap = argparse.ArgumentParser(
         prog="Ocemind（课程命令行）",
-        description="课程回放下载 —— 只要给课程链接，自动出 MP4。"
+        description="爆破下载 —— 只要给课程链接，自动出 MP4。"
                     "不带参数运行 run.py 会打开图形界面。")
     ap.add_argument("--url", action="append", default=[],
                     help="课程/回放链接，可重复传多次")

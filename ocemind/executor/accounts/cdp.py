@@ -93,18 +93,33 @@ class WSClient:
     # ---------------------------------------------------------- 接收
 
     def _read_exact(self, n: int) -> bytes:
-        out = self._rest
-        while len(out) < n:
+        # 攒在 self._rest 里而不是局部变量：读一半超时了，已经到的字节
+        # 还得留着，否则这条消息就永远接不成整条了
+        while len(self._rest) < n:
             chunk = self.sock.recv(65536)
             if not chunk:
                 raise CDPError("连接被对端关闭")
-            out += chunk
-        self._rest = out[n:]
-        return out[:n]
+            self._rest += chunk
+        out, self._rest = self._rest[:n], self._rest[n:]
+        return out
 
     def recv(self) -> str | None:
-        """返回一条文本消息；控制帧（ping/close）就地处理。"""
+        """返回一条文本消息；控制帧（ping/close）就地处理。
+
+        浏览器这一段时间什么都没发就返回 None，让调用方接着等——
+        用了 screencast 之后页面静着的时候是不会有任何消息的，
+        以前这里一超时就当连接断了，读线程一死，之后所有 CDP 调用全卡住。
+        """
         while True:
+            if not self._rest:
+                # 只在「一条消息都还没开始」的时候把超时当空闲；
+                # 已经开始读了就必须读完，否则字节流会错位
+                try:
+                    self._rest = self.sock.recv(65536)
+                except (socket.timeout, TimeoutError):
+                    return None
+                if not self._rest:
+                    raise CDPError("连接被对端关闭")
             b1, b2 = self._read_exact(2)
             opcode = b1 & 0x0F
             masked = b2 & 0x80
@@ -165,16 +180,43 @@ class CDPSession:
         self.ws = WSClient(ws_url, timeout=timeout)
         self._next_id = 0
         self._pending: dict[int, dict] = {}
+        self._handlers: dict[str, list] = {}
         self._lock = threading.Lock()
         self._closed = False
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
         self._reader.start()
+
+    # ---------------------------------------------------------- 事件订阅
+
+    def on(self, method: str, handler) -> None:
+        """订阅一条 CDP 事件（比如 Page.screencastFrame）。
+
+        回调在读线程里跑：里面只能发不等回包的消息（notify），
+        调 call() 会等自己派发回包，直接卡死。
+        """
+        with self._lock:
+            self._handlers.setdefault(method, []).append(handler)
+
+    def notify(self, method: str, params: dict | None = None) -> None:
+        """发一条不等回包的消息，给事件回调用。"""
+        with self._lock:
+            self._next_id += 1
+            msg_id = self._next_id
+        self.ws.send(json.dumps({"id": msg_id, "method": method,
+                                 "params": params or {}}))
+
+    @property
+    def alive(self) -> bool:
+        """读线程还在不在。它一停，这条会话就再也收不到任何回包，
+        对外必须表现为「浏览器没了」，不能让调用方一直等到超时。"""
+        return not self._closed and self._reader.is_alive()
 
     def _read_loop(self) -> None:
         while not self._closed:
             try:
                 raw = self.ws.recv()
             except Exception:  # noqa: BLE001
+                self._closed = True
                 break
             if raw is None:
                 continue
@@ -184,7 +226,15 @@ class CDPSession:
                 continue
             msg_id = msg.get("id")
             if msg_id is None:
-                continue          # 事件，暂不订阅
+                method = msg.get("method") or ""
+                with self._lock:
+                    handlers = list(self._handlers.get(method, ()))
+                for handler in handlers:
+                    try:
+                        handler(msg.get("params") or {})
+                    except Exception:  # noqa: BLE001
+                        continue   # 一条事件出错不该把读线程带下去
+                continue
             with self._lock:
                 slot = self._pending.get(msg_id)
             if slot is not None:
@@ -239,21 +289,18 @@ class ChromeProcess:
     """一个账号一个独占的用户目录，互相看不到 cookie。"""
 
     def __init__(self, chrome_path: str, profile_dir: str | Path,
-                 headless: bool = True, window: tuple[int, int] = (1280, 800)) -> None:
+                 headless: bool = True, window: tuple[int, int] = (1280, 800),
+                 proxy: str = "") -> None:
         self.chrome_path = chrome_path
         self.profile_dir = Path(profile_dir)
         self.headless = headless
         self.window = window
+        self.proxy = proxy
         self.port = 0
         self.proc: subprocess.Popen | None = None
         self.session: CDPSession | None = None
 
-    def start(self, url: str = "about:blank", timeout: float = 30.0) -> CDPSession:
-        if not self.chrome_path or not Path(self.chrome_path).exists():
-            raise CDPError("找不到 Chrome，可在设置里手动指定路径")
-        self.profile_dir.mkdir(parents=True, exist_ok=True)
-        self.port = _free_port()
-
+    def args(self, url: str = "about:blank") -> list[str]:
         args = [
             self.chrome_path,
             f"--remote-debugging-port={self.port}",
@@ -266,9 +313,45 @@ class ChromeProcess:
             "--disable-blink-features=AutomationControlled",
             "--remote-allow-origins=*",
         ]
+        if self.proxy:
+            # 代理在浏览器启动时就定死。Chrome 没有「换代理不重启」的接口，
+            # 所以改代理要把这个账号的浏览器关掉重开
+            args.append(f"--proxy-server={self.proxy}")
         if self.headless:
             args += ["--headless=new", "--disable-gpu"]
         args.append(url)
+        return args
+
+    def _attach_existing(self) -> CDPSession | None:
+        """上个进程没关干净时（比如服务被直接杀掉），Chrome 还占着这个用户目录。
+        再起一个会立刻退出（退出码 21），登录态也用不上。
+        目录里的 DevToolsActivePort 记着它的调试端口，连得上就接回去。"""
+        try:
+            port = int((self.profile_dir / "DevToolsActivePort")
+                       .read_text(encoding="utf-8").splitlines()[0])
+        except (OSError, ValueError, IndexError):
+            return None
+        try:
+            _http_json(f"http://127.0.0.1:{port}/json/version", timeout=1.5)
+        except Exception:  # noqa: BLE001
+            return None
+        page_ws = self._pick_page_target(timeout=time.time() + 3)
+        if not page_ws:
+            return None
+        self.port = port
+        self.session = CDPSession(page_ws)
+        return self.session
+
+    def start(self, url: str = "about:blank", timeout: float = 30.0) -> CDPSession:
+        if not self.chrome_path or not Path(self.chrome_path).exists():
+            raise CDPError("找不到 Chrome，可在设置里手动指定路径")
+        self.profile_dir.mkdir(parents=True, exist_ok=True)
+        reused = self._attach_existing()
+        if reused is not None:
+            return reused
+        self.port = _free_port()
+
+        args = self.args(url)
 
         creation = 0
         if os.name == "nt":
@@ -315,6 +398,12 @@ class ChromeProcess:
 
     def stop(self) -> None:
         if self.session:
+            if not self.proc:
+                # 接回来的是上一个进程留下的浏览器，没有进程句柄可等，让它自己退
+                try:
+                    self.session.call("Browser.close", {}, timeout=3)
+                except Exception:  # noqa: BLE001
+                    pass
             try:
                 self.session.close()
             except Exception:  # noqa: BLE001
