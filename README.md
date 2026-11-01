@@ -101,7 +101,7 @@ ffmpeg 不编进 sidecar：onefile 每次启动都要把整包解压一遍，实
 cd desktop && npm install
 npm run dev
 
-# Windows：先打 sidecar，再打 per-user MSI
+# Windows：先打 sidecar，再打 NSIS 安装器
 python tools/build_sidecar.py
 cd desktop && npm run build:windows        # 本机验证用，加 -- --debug
 # 正式包（带签名，供应用内更新）
@@ -111,15 +111,26 @@ npm run build:release:windows
 python tools/make_portable_desktop.py
 ```
 
-MSI 是**按用户安装**：装到 `%LOCALAPPDATA%\Programs\Ocemind 内容执行器\`，
-不需要管理员权限。卸载走安装目录里的 `Uninstall ...lnk`（或
-`msiexec /x {ProductCode}`）——64 位 per-user MSI 不会往
-「设置 → 应用」里写条目，别指望在那里找到它。
-安装包语言固定为 `zh-CN`（`tauri.windows.conf.json` 的
-`bundle.windows.wix.language`）——中文产品名在默认的 en-US / 代码页
-1252 下会直接报 `LGHT0311`，别把它删掉。
+Windows 出的是 **NSIS 安装器**（`Ocemind 内容执行器_2.3.3_x64-setup.exe`），
+**按用户安装**：装到 `%LOCALAPPDATA%\Ocemind 内容执行器\`，不需要管理员权限，
+会往「设置 → 应用」里写一条卸载项（安装目录里的 `uninstall.exe` 是同一个东西）。
 
-debug 构建的壳默认跑源码（`python run.py`），所以本机装了 MSI 也
+界面相关的几项都写在 `tauri.conf.json` 的 `bundle.windows.nsis`：
+
+- `installerIcon` / `headerImage`（150×57）/ `sidebarImage`（164×314）三张图
+  由 `python tools/make_installer_art.py` 生成，都是 24 位 BMP——
+  NSIS 不认 PNG，也不认 32 位 BMP。配图里嵌的是 `icon.png`，所以换图标
+  的顺序是 `python tools/make_icons.py` → `python tools/make_installer_art.py`
+  → 重新打包
+- 图标原图四周留白很多（512 见方里图形只占 440），`make_icons.py` 会按
+  不透明像素的包围盒裁掉，只留 2% 呼吸位，否则装到任务栏里明显比别人小
+- `languages` 只留 `SimpChinese` + `English`，`displayLanguageSelector: false`
+  让安装器按系统语言自动选，不多弹一步
+
+早先出的是 per-user MSI，现在只作为兜底保留（`bundle.windows.wix.upgradeCode`
+还在，手动 `tauri build --bundles msi` 仍然打得出来）。
+
+debug 构建的壳默认跑源码（`python run.py`），所以本机装了安装包也
 测不到冻结的 sidecar。要按发布路径验证，起进程时带上
 `OCEMIND_SIDECAR_FROZEN=1`，壳就会去找 exe 旁边的 `ocemind-sidecar.exe`。
 便携包也同理：`python tools/make_portable_desktop.py --profile debug`。
@@ -149,7 +160,7 @@ Ubuntu 24.04 默认没有 FUSE2，跑之前要 `sudo apt install libfuse2t64`，
 
 Windows 安装版和 Linux AppImage 的侧边栏都有「检查更新」：查
 `plugins.updater` 里的 `latest.json`，有新版本就下载签过名的安装包并重启
-（Windows 走 MSI，Linux 就地替换 AppImage）。便携版、源码运行、deb 装的
+（Windows 静默跑 NSIS 安装器，Linux 就地替换 AppImage）。便携版、源码运行、deb 装的
 版本都不显示这个入口。
 
 启动 3 秒后会静默查一次，有新版本时按钮直接显示「发现新版本 vX.Y.Z」；
@@ -169,13 +180,14 @@ Windows 安装版和 Linux AppImage 的侧边栏都有「检查更新」：查
 更新地址写死在 `plugins.updater.endpoints`（`releases/latest/download/latest.json`），
 目前指向 `github.com/Ocemind/ocemind-executor`——仓库改名或换地址要同步改。
 标签推送后 CI **直接发布**（`releaseDraft: false`），客户端几秒后就能查到更新。
-MSI 的 `upgradeCode` 固定写在 `tauri.conf.json`（`bundle.windows.wix`），
-**不要改**：换了就等于换了一个产品，更新会装成第二份而不是覆盖。
+`identifier`（`com.ocemind.executor`）**不要改**：NSIS 靠它定位上一次装到哪儿，
+换了就等于换了一个产品，更新会装成第二份而不是覆盖。`upgradeCode` 同理，只是
+它现在只对兜底的 MSI 生效。
 
 `latest.json` 由 `release.yml` 的 `manifest` job 生成，不是 tauri-action 写的。
 原因是它拿 `productName` 拼文件名去 Release 里找资产，而 GitHub 会把资产名里
-的空格换成 `.`、删掉中文（`Ocemind 内容执行器_2.3.0_x64_zh-CN.msi` 实际存成
-`Ocemind._2.3.0_x64_zh-CN.msi`），对不上就把 `windows-x86_64` 条目静默丢掉。
+的空格换成 `.`、删掉中文（`Ocemind 内容执行器_2.3.3_x64-setup.exe` 实际存成
+`Ocemind._2.3.3_x64-setup.exe`），对不上就把 `windows-x86_64` 条目静默丢掉。
 `tools/make_latest_json.py` 改成按接口里的真实资产名生成，`gh release upload`
 上传；两个平台都会写进同一份清单。
 
@@ -190,11 +202,12 @@ MSI 的 `upgradeCode` 固定写在 `tauri.conf.json`（`bundle.windows.wix`）�
 python tools/make_launcher.py
 ```
 
-Tauri 打出来的 exe / MSI 同样要过这一关：未签名的包在本机可能被
+Tauri 打出来的 exe / 安装器同样要过这一关：未签名的包在本机可能被
 SAC 拦下。2026-10-31 实测：debug 构建的壳可以启动；release 构建会在
 编译阶段被拦——SAC 拒绝执行新生成的 `build-script-build.exe`
-（`os error 4551`，CodeIntegrity 事件 3077/3033）。所以**正式 MSI 在
-CI（或没开 SAC 的机器）上打**，本机只用来打 debug 包验证安装链路。
+（`os error 4551`，CodeIntegrity 事件 3077/3033），装完之后双击 exe
+也是「拒绝访问」。所以**正式包在 CI（或没开 SAC 的机器）上打**，本机
+只用来验证安装链路（装完用手动拷出来的 exe 覆盖一下就能跑）。
 要么给构建产物做代码签名，要么这台机器继续用上面的快捷方式；
 **不要为了跑安装包去关 SAC**（不可逆，只能重装系统）。
 
@@ -467,7 +480,9 @@ python -m pytest -q          # 离线，秒级；当前 330 passed, 1 skipped
 
 | 组件 | 许可 | 说明 |
 |---|---|---|
-| [FFmpeg](https://ffmpeg.org/) | LGPL-2.1（shared 构建） | 以动态库形式随包分发，未改动源码；许可证全文见上游 |
+| [FFmpeg](https://ffmpeg.org/) | LGPL-2.1（shared 构建） | 动态库形式随 Windows 安装包分发到 `tools/ffmpeg/`，未改动源码；许可证全文见上游 |
 | [yt-dlp](https://github.com/yt-dlp/yt-dlp) | Unlicense | 作为 Python 包编进 sidecar |
 
-两者都从各自官方 Release 获取，没有打补丁。
+两者都从各自官方 Release 获取，没有打补丁。Linux 不分发 ffmpeg：共享版的
+`.so` 在 `lib/` 下，只拷 `bin/` 拿到的是一堆跑不起来的二进制，AppImage 继续
+依赖系统装好的 `ffmpeg`（`deb.depends` 里也写了）。

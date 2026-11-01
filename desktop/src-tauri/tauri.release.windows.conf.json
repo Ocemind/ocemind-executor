@@ -1,15 +1,12 @@
 {
   "bundle": {
     "targets": [
-      "msi"
+      "nsis"
     ],
     "publisher": "Ocemind",
     "createUpdaterArtifacts": true,
-    "windows": {
-      "wix": {
-        "template": "wix/per-user-main.wxs",
-        "language": "zh-CN"
-      }
+    "resources": {
+      "../../vendor/tools/ffmpeg/": "tools/ffmpeg/"
     }
   }
 }

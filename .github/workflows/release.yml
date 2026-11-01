@@ -1,6 +1,6 @@
 name: release
 
-# 打 v* 标签才出正式包：Windows 出 MSI，Linux 出 AppImage（deb 不能自更新）。
+# 打 v* 标签才出正式包：Windows 出 NSIS 安装器，Linux 出 AppImage（deb 不能自更新）。
 # 两个平台都会生成签名过的 latest.json + .sig，供应用内「检查更新」使用。
 # 需要在仓库 Secrets 里配：
 #   TAURI_SIGNING_PRIVATE_KEY          —— ~/.tauri/ocemind-updater.key 的内容
@@ -31,6 +31,13 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
+      - name: 取随包分发的工具
+        # yt-dlp 会被编进 sidecar；ffmpeg 由 Tauri 当资源拷进安装包。
+        # 少做这一步，打出来的包侧边栏会显示「未找到」。
+        run: |
+          python -m pip install yt-dlp
+          python tools/fetch_vendor.py
+
       - uses: dtolnay/rust-toolchain@stable
 
       - name: 打包 Python sidecar
@@ -60,7 +67,7 @@ jobs:
             echo "__OCEMIND_KEY__"
           } >> "$GITHUB_ENV"
 
-      - name: 构建并发布 MSI
+      - name: 构建并发布安装包
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -96,6 +103,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
+
+      - name: 取随包分发的工具
+        # 只装 yt-dlp（编进 sidecar）。Linux 的 ffmpeg 走系统包，不随包分发。
+        run: python -m pip install yt-dlp
 
       - uses: dtolnay/rust-toolchain@stable
 

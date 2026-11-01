@@ -15,6 +15,13 @@
 
 ### 变更
 
+- **Windows 安装包换成 NSIS**：原来是 MSI 向导，界面是上个时代的样子；
+  现在装到 `%LOCALAPPDATA%\Ocemind 内容执行器`，按系统语言自动选中/英，
+  装完在「设置 → 应用」里能卸载。配图（顶部 150×57、侧栏 164×314）由
+  `tools/make_installer_art.py` 生成，NSIS 只认 24 位 BMP
+- **图标去掉四周留白**：原图 512 见方里图形只占 440，任务栏和开始菜单里
+  看着比别的图标小一圈。`tools/make_icons.py` 按不透明像素的包围盒裁掉边距
+  （留 2% 呼吸位不顶边），重出 32 / 128 / 256 和整套 ICO
 - **本机已有的优先用本机的**：设置里填的路径 → PATH / scoop / chocolatey /
   winget / `C:\ffmpeg\bin` → 包里自带的。侧边栏会标出当前用的是哪一个
 - 新增 `tools/fetch_vendor.py`：打包前把 ffmpeg 下到 `vendor/`（只做一次，

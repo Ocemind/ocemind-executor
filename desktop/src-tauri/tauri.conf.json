@@ -26,12 +26,18 @@
     "active": true,
     "targets": "all",
     "externalBin": ["binaries/ocemind-sidecar"],
-    "resources": {
-      "../../vendor/tools/ffmpeg/": "tools/ffmpeg/"
-    },
     "windows": {
       "wix": {
         "upgradeCode": "4a0925c6-68ea-583b-b587-c212ae0ad084"
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "icons/installer-header.bmp",
+        "sidebarImage": "icons/installer-sidebar.bmp",
+        "startMenuFolder": "Ocemind"
       }
     },
     "category": "Productivity",

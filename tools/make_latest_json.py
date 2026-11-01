@@ -2,8 +2,8 @@
 
 为什么不用 tauri-action 自带的 latest.json：它会用 productName 拼出文件名去匹配
 已上传的资产，而 GitHub 会把资产名里的空格换成 `.`、删掉非 ASCII 字符——
-"Ocemind 内容执行器_2.3.0_x64_zh-CN.msi" 实际存成
-"Ocemind._2.3.0_x64_zh-CN.msi"，两者对不上，Windows 条目就被静默丢掉了。
+"Ocemind 内容执行器_2.3.0_x64-setup.exe" 实际存成
+"Ocemind._2.3.0_x64-setup.exe"，两者对不上，Windows 条目就被静默丢掉了。
 
 这里改成从 Releases API 读真实资产名，名字怎么变都无所谓。
 
@@ -71,7 +71,10 @@ def main() -> None:
 
     platforms = {}
     for suffix, keys in (
-        (".msi", ("windows-x86_64", "windows-x86_64-msi")),
+        # Windows 现在出的是 NSIS 安装器（xxx_x64-setup.exe），MSI 只留作兜底：
+        # 早先的版本还指着 .msi，遇到老 Release 也能生成
+        ("-setup.exe", ("windows-x86_64", "windows-x86_64-nsis")),
+        (".msi", ("windows-x86_64-msi",)),
         (".AppImage", ("linux-x86_64", "linux-x86_64-appimage")),
     ):
         try:
