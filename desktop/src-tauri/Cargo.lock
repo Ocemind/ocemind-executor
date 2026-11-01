@@ -2498,7 +2498,7 @@ dependencies = [
 
 [[package]]
 name = "ocemind-desktop"
-version = "2.3.2"
+version = "2.3.3"
 dependencies = [
  "libc",
  "log",

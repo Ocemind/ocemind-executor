@@ -3,6 +3,31 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 版本号见 `ocemind/__init__.py`。
 
+## [2.3.3] - 2026-11-01
+
+### 新增
+
+- **外部工具自动就位**：启动时先看本机装没装 ffmpeg / yt-dlp（PATH、
+  `C:\ffmpeg\bin`、scoop / chocolatey / winget 的落点），没有才下到
+  `%APPDATA%\ocemind\tools\`，不动系统 PATH，卸载删数据目录即可。下载
+  一律校验 SHA-256，关掉用设置里的开关或 `OCEMIND_NO_TOOL_DOWNLOAD=1`
+- **国内镜像**：设置 → 外部工具可填镜像地址，客户端先取
+  `<镜像>/index.json`，拿不到再回落 GitHub。`tools/sync_tools_mirror.py`
+  负责从 GitHub Release 同步镜像目录（含版本、大小、校验值）
+- **`POST /api/tools/ensure`**：下载失败后的手动重试入口，界面上是
+  「下载缺失工具」按钮；侧边栏直接显示下载百分比
+
+### 变更
+
+- **`.gitignore` 跟上改名**：`_explore/site-js/`，不再把抓来的站点脚本
+  误提交进仓库
+- 应用图标换成新图（16–512，含多尺寸 ICO）
+
+### 移除
+
+- **所有旧品牌兼容代码**：数据目录迁移、`.tdmpart` / `.ytdl` 旧后缀、
+  TDM Lite 配置迁移、旧快捷方式清理。现在没有老用户，留着只是负担
+
 ## [2.3.2] - 2026-11-01
 
 ### 变更
