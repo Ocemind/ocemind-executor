@@ -1,12 +1,11 @@
 name: latest-fix
 
-# releases/latest 被 1.0.0 抢了（它比 1.1.0 后创建），更新地址会 404。
-# 这里把 1.1.0 钉成 Latest，并清掉排障时写进去的 Release 正文。
-# 由 latestfix 标签触发；失败时把报错写成 ::error::。
+# releases/latest 落在了 1.0.0 上（它比 1.1.0 后创建），更新地址会 404。
+# 这次把 make_latest 的完整报错写进 v1.0.0 的正文，方便本机读。
 
 on:
   push:
-    tags: ["latestfix"]
+    tags: ["latestfix2"]
 
 permissions:
   contents: write
@@ -17,18 +16,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 钉 Latest
+      - name: 试着钉 Latest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          out=$(gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/tags/v1.1.0" \
-            -f make_latest=true 2>&1) || {
-            msg=$(printf '%s' "$out" | tr '\n' ' ' | head -c 900)
-            echo "::error title=make-latest-failed::$msg"
-            exit 1
-          }
-          echo "$out" | head -c 400
-          gh release edit v1.1.0 --notes "" || true
-          echo "latest is:"
-          gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name'
-          gh release list --limit 5
+          {
+            echo "=== A. PATCH by tag ==="
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/tags/v1.1.0" \
+              -f make_latest=true 2>&1 | head -40
+            echo
+            echo "=== B. PATCH by id ==="
+            id=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v1.1.0" --jq .id)
+            echo "id=$id"
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" \
+              -f make_latest=true 2>&1 | head -40
+            echo
+            echo "=== C. latest now ==="
+            gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2>&1
+            echo
+            echo "=== D. list ==="
+            gh release list --limit 5 2>&1
+          } > err.txt 2>&1
+          cat err.txt
+
+      - name: 把结果写进 1.0.0 正文
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit v1.0.0 --notes-file err.txt || true
