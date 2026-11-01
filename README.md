@@ -125,7 +125,7 @@ AppImage——deb 装的版本没法自动更新。macOS 暂不做。
 
 AppImage 是单文件，双击即跑，用户数据放在 `~/.local/share/ocemind`。
 Ubuntu 24.04 默认没有 FUSE2，跑之前要 `sudo apt install libfuse2t64`，
-或者用 `./ocemind_2.3.0_amd64.AppImage --appimage-extract-and-run`。
+或者用 `./ocemind_1.0.0_amd64.AppImage --appimage-extract-and-run`。
 
 ### 自动更新
 

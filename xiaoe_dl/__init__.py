@@ -5,4 +5,4 @@
 requests / tkinter / fastapi，也会给 PyInstaller 的静态分析添乱。
 """
 
-__version__ = "2.3.0"
+__version__ = "1.0.0"
