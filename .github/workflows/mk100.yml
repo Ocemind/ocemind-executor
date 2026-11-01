@@ -1,0 +1,36 @@
+name: mk100
+
+# 只做一件事：给 v1.0.0 建 Release（空壳，资产由 publish-1.0.0 补）。
+# 目的：先单独验证「提交没有分支引用」是不是 403 的原因。
+# 由 mk100 标签触发；失败时把报错写成 ::error::，本机读 annotation。
+
+on:
+  push:
+    tags: ["mk100"]
+
+permissions:
+  contents: write
+
+jobs:
+  mk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 建 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view v1.0.0 >/dev/null 2>&1; then
+            echo "already exists"
+            exit 0
+          fi
+          out=$(gh release create v1.0.0 \
+            --target 012893bcc4a54ff433b3d306f507e526066d3314 \
+            --title "Ocemind 内容执行器 1.0.0" \
+            --notes "版本号重排：这一版原本是 2.3.0，代码一致，只把版本号改成 1.0.0。" 2>&1) || {
+            msg=$(printf '%s' "$out" | tr '\n' ' ' | head -c 900)
+            echo "::error title=create-release-failed::$msg"
+            exit 1
+          }
+          echo "$out"
