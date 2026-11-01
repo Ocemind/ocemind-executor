@@ -1,0 +1,60 @@
+name: diag
+
+# 一次性只读诊断：v1.0.0 建 Release 一直 403，v1.1.0 同样的 token 却可以。
+# 只发 GET，不新建任何 Release；结果写进 v1.1.0 的正文（匿名可读）。
+# 由 diag1 标签触发，跑完打 diag1-done。
+
+on:
+  push:
+    tags: ["diag1"]
+
+permissions:
+  contents: write
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 读状态
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "=== token permissions ==="
+            gh api "repos/$GITHUB_REPOSITORY" --jq '.permissions' 2>&1 || true
+            echo
+            echo "=== GET release by tag v1.0.0 ==="
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/v1.0.0" 2>&1 | head -25 || true
+            echo
+            echo "=== GET release by tag v1.1.0 (对照) ==="
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/v1.1.0" --jq '{id,tag_name,draft,author:.author.login,assets:[.assets[].name]}' 2>&1 || true
+            echo
+            echo "=== GET ref tags/v1.0.0 ==="
+            gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v1.0.0" 2>&1 | head -20 || true
+            echo
+            echo "=== GET ref tags/v1.1.0 ==="
+            gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v1.1.0" 2>&1 | head -20 || true
+            echo
+            echo "=== GET commit 012893b ==="
+            gh api "repos/$GITHUB_REPOSITORY/commits/012893bcc4a54ff433b3d306f507e526066d3314" \
+              --jq '{sha, message: .commit.message}' 2>&1 || true
+            echo
+            echo "=== 所有 release（含草稿）==="
+            gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --paginate \
+              --jq '.[] | "\(.id) \(.tag_name) draft=\(.draft) assets=\(.assets|length)"' 2>&1 || true
+          } > diag.txt 2>&1
+          cat diag.txt
+
+      - name: 回传诊断
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit v1.1.0 --notes-file diag.txt || true
+
+      - name: 完成信号
+        run: |
+          git tag -f diag1-done
+          git push -f origin refs/tags/diag1-done
