@@ -248,6 +248,29 @@ def test_install_ffmpeg_rejects_archive_without_exe(home, tmp_path):
         toolchain._install_ffmpeg(archive)
 
 
+def test_run_ytdlp_imports_from_managed_zipapp(home, monkeypatch):
+    """托管的是 zipapp：得能靠 sys.path + zipimport 直接跑起来。"""
+    import sys as _sys
+
+    zipapp = toolchain.tools_dir() / "ytdlp" / "yt-dlp.zip"
+    zipapp.parent.mkdir(parents=True)
+    with zipfile.ZipFile(zipapp, "w") as zf:
+        zf.writestr("yt_dlp/__init__.py",
+                    "def main():\n    return 7\n")
+    old_argv = _sys.argv
+    monkeypatch.delitem(_sys.modules, "yt_dlp", raising=False)
+    try:
+        assert toolchain.run_ytdlp(["--version"]) == 7
+    finally:
+        _sys.argv = old_argv
+        _sys.modules.pop("yt_dlp", None)
+
+
+def test_run_ytdlp_without_install_reports_clearly(home, capsys):
+    assert toolchain.run_ytdlp(["--version"]) == 127
+    assert "还没安装" in capsys.readouterr().err
+
+
 def test_install_ytdlp_keeps_zipapp(home, tmp_path):
     archive = tmp_path / "yt-dlp"
     archive.write_bytes(b"PK..")
@@ -387,6 +410,22 @@ def test_autostart_respects_switch(home, monkeypatch):
             return False if key == "autoDownloadTools" else default
 
     toolchain.autostart(Off())
+
+
+# ---------------------------------------------------------------- 打包用清单
+def test_ytdlp_stdlib_fallback_covers_optparse():
+    """冻结进程里 import yt_dlp 首先会缺的就是 optparse，兜底清单必须有。"""
+    import sys as _sys
+    from pathlib import Path as _P
+
+    _sys.path.insert(0, str(_P(__file__).resolve().parent.parent))
+    from tools.ytdlp_stdlib import FALLBACK, ytdlp_stdlib_imports
+
+    assert "optparse" in FALLBACK
+    names = ytdlp_stdlib_imports()
+    assert "optparse" in names
+    assert "zipimport" in names          # zipapp 靠它加载
+    assert "pty" not in names or os.name != "nt"
 
 
 # ---------------------------------------------------------------- 接口

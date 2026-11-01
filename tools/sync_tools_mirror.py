@@ -1,41 +1,34 @@
 # -*- coding: utf-8 -*-
-"""把客户端的开源工具（ffmpeg / yt-dlp）同步到国内镜像目录。
+"""生成要放到 Gitee 上的工具目录（ffmpeg / yt-dlp）。
 
 背景
 ----
 安装包不带 ffmpeg、yt-dlp：它们更新节奏和我们发版对不上，打进去就得跟着
 重发。客户端首次运行时自己去装（见 `ocemind/toolchain.py`）。但 GitHub
-在国内不稳，所以客户端优先问「镜像」：
+在国内不稳，所以客户端优先读 Gitee 上的一份拷贝：
 
     <镜像根>/index.json
-    <镜像根>/ffmpeg/windows-x86_64/ffmpeg.zip
+    <镜像根>/ffmpeg/windows-x86_64/<ffmpeg 包>
     <镜像根>/ytdlp/any/yt-dlp.zip
 
 这个脚本负责生成上面这套文件：从 GitHub Release 拉最新版、算 SHA-256、
-写 index.json。服务器上挂个定时任务跑一次，镜像就一直跟着上游走。
+写 index.json。传 Gitee 用网页或 `git push` 都行，脚本不碰网络存储。
 
 用法
 ----
-    # 只在本地产出目录（默认，最安全，不碰任何服务器）
-    python tools/sync_tools_mirror.py --out D:/mirror/tools
-
-    # 顺带推到服务器静态目录（显式给了目标才动手）
-    python tools/sync_tools_mirror.py --out ./mirror --upload user@host:/srv/www/tools
-
-    # 只同步某个平台 / 只校验现有文件
-    python tools/sync_tools_mirror.py --out ./mirror --platform windows-x86_64
+    python tools/sync_tools_mirror.py --out ./mirror
+    python tools/sync_tools_mirror.py --out ./mirror --gitee 你/ocemind-tools
     python tools/sync_tools_mirror.py --out ./mirror --verify
 
 带宽与令牌
 ----------
-默认 `--skip-existing`：本地已有且 index 里记录一致的文件不重复下载
-（ffmpeg 有一百多 MB，每天重下没必要）。GitHub API 匿名够用，限流了就设
-环境变量 GITHUB_TOKEN。
+本地已有、且 index 里记录的版本和上游一致的文件不重复下载（ffmpeg 有
+七八十 MB，每天重下没必要）。GitHub API 匿名够用，限流了设 GITHUB_TOKEN。
 
 安全
 ----
-只从 GitHub 官方 Release 取文件；上传用 rsync/scp，不删服务器上的东西
-（不带 --delete），避免误伤同目录下别的站点文件。
+只从 GitHub 官方 Release 取文件，下载后算 SHA-256 写进清单；客户端拿到的
+每一份都按这个值校验。
 """
 
 from __future__ import annotations
@@ -44,8 +37,6 @@ import argparse
 import hashlib
 import json
 import os
-import shutil
-import subprocess
 import sys
 import tempfile
 import urllib.error
@@ -69,7 +60,8 @@ REPOS = {
 #: 平台键 -> Release 资产文件名（先精确匹配，再按片段匹配）
 ASSET_SUFFIX = {
     "ffmpeg": {
-        "windows-x86_64": "ffmpeg-master-latest-win64-lgpl.zip",
+        # Windows 用共享版：静态版 167 MB 超过 Gitee 单文件上限
+        "windows-x86_64": "ffmpeg-master-latest-win64-lgpl-shared.zip",
         "linux-x86_64": "ffmpeg-master-latest-linux64-lgpl.tar.xz",
         "linux-aarch64": "ffmpeg-master-latest-linuxarm64-lgpl.tar.xz",
     },
@@ -163,7 +155,9 @@ def sync_tool(tool: str, platform: str, out: Path, old: dict,
     if not info["url"]:
         print("  - 上游没有这个平台的包，跳过")
         return None
-    filename = info["name"] or f"{tool}-{platform}"
+    # 镜像上的文件名固定下来（yt-dlp 上游叫 `yt-dlp`，看着像目录）：
+    # 客户端只认 index.json 里的 url，但人翻目录时一致更重要
+    filename = "yt-dlp.zip" if tool == "ytdlp" else (info["name"] or f"{tool}-{platform}")
 
     rel_dir = Path(tool) / platform
     dest = out / rel_dir / filename
@@ -240,35 +234,37 @@ def verify(out: Path) -> int:
     return 1 if bad else 0
 
 
-def upload(out: Path, target: str) -> int:
-    """rsync -a --no-delete 到目标。不留 --delete：同目录可能还有别的东西。"""
-    if not shutil.which("rsync"):
-        print("没有 rsync，用 scp（会覆盖同名文件，不删除其它文件）")
-        files = [str(p.relative_to(out)) for p in out.rglob("*") if p.is_file()]
-        cmd = ["scp", "-r", *files, target]
-        cwd = out
-    else:
-        cmd = ["rsync", "-a", "--info=progress2", str(out) + "/", target]
-        cwd = None
-    print("$ " + " ".join(cmd))
-    return subprocess.call(cmd, cwd=cwd)
+def gitee_url(repo: str, branch: str = "master", subdir: str = "") -> str:
+    """Gitee 仓库里 raw 文件的地址前缀，就是设置里「工具镜像」该填的值。"""
+    base = f"https://gitee.com/{repo.strip('/')}/raw/{branch}"
+    return f"{base}/{subdir.strip('/')}" if subdir.strip("/") else base
 
 
 # ----------------------------------------------------------------- 入口
 def default_platforms() -> list[str]:
-    return ["windows-x86_64", "linux-x86_64", "linux-aarch64"]
+    # 只出 Windows：Gitee 单文件 100 MB，Linux 静态版 130 MB 传不上去。
+    # Linux 用户用发行版自带的 ffmpeg（apt/brew），没有时才回落 GitHub。
+    return ["windows-x86_64"]
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="同步 ffmpeg / yt-dlp 到国内镜像目录")
+    # Windows 控制台默认是 GBK，✓ / ✗ / … 会直接抛 UnicodeEncodeError
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError, ValueError):
+            pass
+    ap = argparse.ArgumentParser(description="生成要放到 Gitee 上的工具目录")
     ap.add_argument("--out", required=True, help="镜像根目录（脚本会往里写文件）")
     ap.add_argument("--platform", default="",
-                    help="逗号分隔，默认 windows-x86_64,linux-x86_64,linux-aarch64")
+                    help="逗号分隔，默认只有 windows-x86_64（Linux 包超过 Gitee 单文件上限）")
     ap.add_argument("--tool", default="ffmpeg,ytdlp", help="逗号分隔")
     ap.add_argument("--no-skip-existing", action="store_true",
                     help="忽略本地已有文件，全部重新下载")
     ap.add_argument("--verify", action="store_true", help="只校验，不下载")
-    ap.add_argument("--upload", default="", help="rsync 目标，如 user@host:/srv/www/tools")
+    ap.add_argument("--gitee", default="", metavar="OWNER/REPO",
+                    help="传完后打印该填进设置里的镜像地址")
+    ap.add_argument("--branch", default="master", help="Gitee 分支名，默认 master")
     ap.add_argument("--dry-run", action="store_true", help="只打印计划，不下载不写盘")
     args = ap.parse_args(argv)
 
@@ -310,8 +306,10 @@ def main(argv: list[str] | None = None) -> int:
             manifest["tools"][tool] = got
 
     build_index(out, manifest)
-    if args.upload:
-        return upload(out, args.upload)
+    if args.gitee:
+        print("\n把下面这串填进 设置 → 外部工具 → 工具镜像：")
+        print(f"  {gitee_url(args.gitee, args.branch)}")
+        print("（前提是 index.json 和各个目录都按原路径传到了该仓库根目录）")
     return 0
 
 

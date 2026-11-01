@@ -87,27 +87,27 @@ chocolatey / winget 的落点），以及**托管目录里有没有**。两者�
 关掉它：设置里取消「启动时自动下载」，或设环境变量
 `OCEMIND_NO_TOOL_DOWNLOAD=1`。
 
-GitHub 在国内不一定连得上，所以客户端**优先问镜像**：设置 → 外部工具里的
-「工具镜像」填一个静态站点地址（如 `https://你的域名/tools`），客户端会先取
-`<镜像>/index.json`，取不到再回落 GitHub。镜像由
-`tools/sync_tools_mirror.py` 从 GitHub Release 同步：
+GitHub 在国内不一定连得上，所以客户端**优先读 Gitee 上的一份拷贝**：
+设置 → 外部工具里的「工具镜像」填 `https://gitee.com/你/ocemind-tools/raw/master`，
+客户端先取 `<镜像>/index.json`，取不到再回落 GitHub。
+
+Gitee 那份是用脚本生成的，传上去一次就行：
 
 ```bash
-# 在服务器（或任何能连 GitHub 的机器）上跑，产出 index.json + 安装包
-python tools/sync_tools_mirror.py --out /srv/www/tools
-# 本地产出后推上去；不带 --delete，不会动同目录别的东西
-python tools/sync_tools_mirror.py --out ./mirror --upload user@host:/srv/www/tools
-# 发布前校验一遍
-python tools/sync_tools_mirror.py --out /srv/www/tools --verify
+# 从 GitHub Release 拉最新版，算 SHA-256，产出 index.json + 文件
+python tools/sync_tools_mirror.py --out ./mirror
+# 传完后打印该填进设置的地址
+python tools/sync_tools_mirror.py --out ./mirror --gitee 你/ocemind-tools
+# 发布前自检：按清单重新校验每个文件
+python tools/sync_tools_mirror.py --out ./mirror --verify
 ```
 
-挂在 cron / systemd timer 里每天跑一次就跟得上上游。目录结构是固定的：
-`<镜像>/ffmpeg/<平台>/<文件>`、`<镜像>/ytdlp/any/yt-dlp.zip`，清单见
-`index.json`。以后要再接别的开源工具，在 `ocemind/toolchain.py` 里加一条
-`FALLBACK_URLS`，脚本里加一条资产名即可。
+Windows 用 ffmpeg 的**共享版**（78 MB）：静态版 167 MB，超过 Gitee 单文件
+上限，传不上去。上游更新后重跑一次第 1 条命令，把变动的文件覆盖上去即可。
+以后要再接别的开源工具，在 `ocemind/toolchain.py` 里加一条
+`FALLBACK_URLS`，脚本里加一条资产名。
 
-完整的部署步骤（静态站点、systemd timer、让客户端默认走镜像）见
-[docs/tools-mirror.md](docs/tools-mirror.md)。
+完整步骤见 [docs/tools-mirror.md](docs/tools-mirror.md)。
 
 ### Tauri 桌面壳
 

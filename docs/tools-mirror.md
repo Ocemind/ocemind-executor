@@ -1,144 +1,93 @@
-# 外部工具镜像：部署与同步
+# 外部工具下载源：放在 Gitee 上
 
 客户端要用 ffmpeg 和 yt-dlp，但这两个都是独立项目、更新频繁，打进安装包
 就得跟着重发。所以做成**首次运行时按需下载**：先看本机装没装，没有再下。
 
-GitHub 在国内不稳（TLS 半路断很常见），于是下载源分两级：
+GitHub 在国内不稳，于是下载源分两级：
 
 ```
-客户端 ──①── <镜像>/index.json + <镜像>/<工具>/<平台>/<文件>
-        └──②── GitHub Release（镜像不可用时兜底）
+客户端 ──①── Gitee 上的那份拷贝（index.json + 文件）
+        └──②── GitHub Release（Gitee 不可用时兜底）
 ```
 
-本文说的是第 ① 级的那个镜像怎么搭、怎么保持和 GitHub 同步。
+① 就是**一个公开的 Gitee 仓库**，不需要服务器、不需要域名、不需要定时任务。
 
 ---
 
-## 1. 镜像长什么样
-
-就是一组静态文件，任何 nginx / Caddy / 对象存储都能托管：
-
-```
-/srv/www/tools/
-├── index.json                                  # 清单：地址、大小、SHA-256、版本
-├── ffmpeg/windows-x86_64/ffmpeg-master-latest-win64-lgpl.zip
-├── ffmpeg/linux-x86_64/ffmpeg-master-latest-linux64-lgpl.tar.xz
-├── ffmpeg/linux-aarch64/ffmpeg-master-latest-linuxarm64-lgpl.tar.xz
-└── ytdlp/any/yt-dlp.zip
-```
-
-`index.json` 的条目：
-
-```json
-{
-  "schema": 1,
-  "generated": "2026-11-01T09:00:00Z",
-  "tools": {
-    "ytdlp": {"any": {
-      "url": "ytdlp/any/yt-dlp.zip",
-      "sha256": "…",
-      "size": 3073072,
-      "version": "2026.10.26",
-      "source": "https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.26/yt-dlp"
-    }}
-  }
-}
-```
-
-客户端只认 `url`（相对路径按镜像根拼）、`sha256`、`size`、`version`。
-**没有 `sha256` 的条目不用**——校验不过就重新下，绝不会装一个不知道来源的
-可执行文件。
-
----
-
-## 2. 同步脚本
-
-`tools/sync_tools_mirror.py`，只用标准库，在哪跑都行。
+## 1. 生成要传的文件
 
 ```bash
-# 只在本地产出（最安全）
-python tools/sync_tools_mirror.py --out /srv/www/tools
-
-# 只同步某个平台，省流量
-python tools/sync_tools_mirror.py --out /srv/www/tools --platform windows-x86_64
-
-# 本地产出后推到服务器；不带 --delete，不会动同目录的其它文件
-python tools/sync_tools_mirror.py --out ./mirror --upload user@host:/srv/www/tools
-
-# 发布前自检：按 index.json 重新算一遍 SHA-256
-python tools/sync_tools_mirror.py --out /srv/www/tools --verify
-
-# 只看会下什么，不落盘
-python tools/sync_tools_mirror.py --out ./mirror --dry-run
+python tools/sync_tools_mirror.py --out ./mirror
 ```
 
-脚本的取法是「读 GitHub Release → 挑资产 → 下载 → 算 SHA-256 → 写清单」。
-已经是最新的不会重复下载（优先比 GitHub 给的资产 digest，没有就比资产的
-`updated_at`）。GitHub API 匿名够用，被限流了设 `GITHUB_TOKEN`。
+产出：
+
+```
+mirror/
+├── index.json
+├── ffmpeg/windows-x86_64/<ffmpeg 压缩包>      # 共享版，约 78 MB
+└── ytdlp/any/yt-dlp.zip                        # 约 3 MB
+```
+
+为什么用共享版而不是静态版：Gitee 单文件上限 100 MB，静态版 167 MB 传不上去；
+共享版 78 MB，解压后 ffmpeg.exe 旁边的 dll 一起用，功能一样。
+
+> 默认只同步 Windows。Linux 静态版 130 MB、超过 Gitee 单文件上限，所以
+> 不上镜像——Linux 用户走发行版自带的 ffmpeg（apt/dnf 装了就有），
+> 真的没有时才回落 GitHub。
 
 ---
 
-## 3. 部署
+## 2. 传到 Gitee
 
-以 1Panel + 静态网站为例（也适用于任何已有站点）：
+1. 在 Gitee 新建一个**公开**仓库，比如 `ocemind-tools`，不要勾选初始化
+   README（省得合并麻烦）；
+2. 把 `mirror/` 里的内容整个传上去。两种传法任选：
+   - 网页：仓库首页「上传文件」，把 `index.json`、两个目录里的文件按原路径传；
+   - 命令行（推荐，路径不会传错）：
+     ```bash
+     cd mirror
+     git init && git add .
+     git commit -m "tools 2026-11-01"
+     git remote add origin git@gitee.com:<你>/ocemind-tools.git
+     git push -u origin master
+     ```
 
-```bash
-sudo mkdir -p /srv/www/tools
-sudo chown $USER /srv/www/tools
+传完以后，你需要的那串地址是：
+
+```
+https://gitee.com/<你>/ocemind-tools/raw/master/<仓库里的目录>/
 ```
 
-1Panel → 网站 → 建一个静态站点（比如 `tools.example.com`），根目录指向
-`/srv/www/tools`。nginx 默认就会返回 `index.json`，不需要额外配置。
-
-定时同步（systemd timer 比 cron 好排查）：
-
-```ini
-# /etc/systemd/system/ocemind-tools-sync.service
-[Unit]
-Description=Sync ffmpeg/yt-dlp mirror from GitHub
-
-[Service]
-Type=oneshot
-WorkingDirectory=/opt/ocemind-executor
-ExecStart=/usr/bin/python3 tools/sync_tools_mirror.py --out /srv/www/tools
-```
-
-```ini
-# /etc/systemd/system/ocemind-tools-sync.timer
-[Unit]
-Description=Daily ocemind tools mirror sync
-
-[Timer]
-OnCalendar=*-*-* 04:17:00
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-```
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now ocemind-tools-sync.timer
-sudo systemctl list-timers ocemind-tools-sync.timer   # 看下次跑的时间
-```
-
-> 服务器上只新增 `/srv/www/tools` 和这两个 unit 文件，不碰现有站点、
-> 不改 sshd、不占端口。同步失败不影响任何正在跑的服务。
+如果 `index.json` 在仓库根目录，就是
+`https://gitee.com/<你>/ocemind-tools/raw/master`。
+不确定的话跑 `python tools/sync_tools_mirror.py --out ./mirror --gitee <你>/ocemind-tools`
+让它直接打印该填的地址。
 
 ---
 
-## 4. 让客户端用上镜像
+## 3. 让客户端用上
 
-三种方式，优先级从高到低：
+设置 → 外部工具 → 「工具镜像」填上面那串地址即可。也可以在
+`ocemind/toolchain.py` 的 `DEFAULT_MIRROR` 里写死，重新打包后所有安装包
+默认走它（用户仍可覆盖）。
 
-| 方式 | 适合 |
-|------|------|
-| 设置 → 外部工具 → 「工具镜像」 | 单个用户临时改 |
-| 环境变量 `OCEMIND_TOOLS_MIRROR` | 批量部署 / 脚本 |
-| `ocemind/toolchain.py` 里的 `DEFAULT_MIRROR` 常量 | 想让所有安装包默认走镜像 |
+客户端会先取 `<镜像>/index.json`，按里面的地址下载并校验 SHA-256；
+Gitee 打不开或者清单里没有这个平台，就回落到 GitHub，不会卡住。
 
-`DEFAULT_MIRROR` 填上之后要重新打包才生效；它只是默认值，用户仍可在设置里
-覆盖。没配镜像或者镜像挂了，客户端会回落到 GitHub，不会因此卡住。
+---
+
+## 4. 以后怎么更新
+
+上游发新版本后，重跑一次第 1 步（已是最新的不会重复下载），再把变动的
+文件覆盖上传、`git push` 一次就行。`--verify` 可以自检清单和文件对不对：
+
+```bash
+python tools/sync_tools_mirror.py --out ./mirror --verify
+```
+
+想省事也可以把这套跑在一个能连 GitHub 的机器上（比如你现有的服务器），
+产出的 `mirror/` 目录再传 Gitee——服务器只当「下载器」，不对外提供访问。
 
 ---
 
@@ -148,7 +97,6 @@ sudo systemctl list-timers ocemind-tools-sync.timer   # 看下次跑的时间
 
 1. `ocemind/toolchain.py` 的 `FALLBACK_URLS` 加一条上游地址；
 2. 同文件里加安装函数（`_install_xxx`），在 `ensure()` 里接上；
-3. `tools/sync_tools_mirror.py` 的 `REPOS` / `ASSET_SUFFIX` 各加一条，
-   让镜像把新工具也同步过去。
+3. `tools/sync_tools_mirror.py` 的 `REPOS` / `ASSET_SUFFIX` 各加一条。
 
-下载、校验、重试、进度回显这些都不用重写。
+下载、校验、重试、进度回显都不用重写。

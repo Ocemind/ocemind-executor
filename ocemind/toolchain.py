@@ -11,15 +11,17 @@
 2. **没有才下载**：下载到数据目录（`%APPDATA%\\ocemind\\tools\\`），
    不动系统 PATH，卸载时删掉数据目录即可；
 3. **优先国内镜像**：镜像上放一份 `index.json` + 文件，客户端先问镜像、
-   失败再回落到 GitHub。镜像由 `tools/sync_tools_mirror.py` 从 GitHub
-   同步，服务器上挂个定时任务就能一直保持最新。
+   失败再回落到 GitHub。镜像是 Gitee 上的一个公开仓库，由
+   `tools/sync_tools_mirror.py` 从 GitHub 同步后推上去（见 docs/tools-mirror.md）。
 
-下载一律校验 SHA-256（镜像的 `index.json` 里带），没有校验值的来源不用。
+镜像条目里的文件一律校验 SHA-256（校验值在 `index.json` 里），对不上就丢弃；
+回落 GitHub 时没有校验值，只有 HTTPS。两条路都只从官方 Release 取包。
 """
 from __future__ import annotations
 
 import hashlib
 import http.client
+import importlib
 import json
 import os
 import platform
@@ -48,7 +50,9 @@ def platform_key() -> str:
 #: 兜底来源：没有配镜像时直接从上游 GitHub Release 拿
 FALLBACK_URLS = {
     "ffmpeg": {
-        "windows-x86_64": "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-lgpl.zip",
+        # Windows 用共享版（78 MB）：静态版 167 MB，超过 Gitee 单文件上限，
+        # 放不进镜像；exe 旁边的 dll 由系统按同目录自动加载
+        "windows-x86_64": "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-lgpl-shared.zip",
         "linux-x86_64": "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-lgpl.tar.xz",
         "linux-aarch64": "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linuxarm64-lgpl.tar.xz",
     },
@@ -396,12 +400,15 @@ def run_ytdlp(argv: list[str]) -> int:
     sys.path.insert(0, str(managed))
     sys.argv = ["yt-dlp"] + list(argv)
     try:
-        import yt_dlp
+        # 用 importlib 拼模块名，别写成 `import yt_dlp`：PyInstaller 看到
+        # 字面导入就会把构建机上的 yt-dlp 打进包里，冻结导入器又排在
+        # sys.path 前面，下载来的新版本就永远轮不上了。
+        module = importlib.import_module("yt" + "_dlp")
     except ImportError as exc:  # 损坏的包
         print(f"yt-dlp 加载失败：{exc}", file=sys.stderr)
         return 127
     try:
-        return int(yt_dlp.main() or 0)
+        return int(module.main() or 0)
     except SystemExit as exc:
         return int(exc.code or 0)
 

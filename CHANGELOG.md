@@ -11,9 +11,9 @@
   `C:\ffmpeg\bin`、scoop / chocolatey / winget 的落点），没有才下到
   `%APPDATA%\ocemind\tools\`，不动系统 PATH，卸载删数据目录即可。下载
   一律校验 SHA-256，关掉用设置里的开关或 `OCEMIND_NO_TOOL_DOWNLOAD=1`
-- **国内镜像**：设置 → 外部工具可填镜像地址，客户端先取
+- **Gitee 镜像**：设置 → 外部工具可填镜像地址，客户端先取
   `<镜像>/index.json`，拿不到再回落 GitHub。`tools/sync_tools_mirror.py`
-  负责从 GitHub Release 同步镜像目录（含版本、大小、校验值）
+  从 GitHub Release 生成要传 Gitee 的目录（含版本、大小、校验值）
 - **`POST /api/tools/ensure`**：下载失败后的手动重试入口，界面上是
   「下载缺失工具」按钮；侧边栏直接显示下载百分比
 
